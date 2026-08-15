@@ -4,10 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * 已导入帖子的持久化实体。
- *
- * status 取值对应导入任务状态机（见 docs/plan/ui-and-runtime.md）：
- * PENDING / READING / NEEDS_MANUAL_INPUT / ANALYZING / DONE / READ_FAILED / ANALYZE_FAILED
+ * 已导入帖子的持久化实体。status 取值见 [com.jk.offermate.domain.model.ImportStatus]。
  */
 @Entity(tableName = "imported_post")
 data class ImportedPostEntity(
@@ -18,6 +15,7 @@ data class ImportedPostEntity(
     val title: String,
     val summary: String,
     val status: String,
+    val questionCount: Int,
     val importedAt: Long,
     val updatedAt: Long
 )

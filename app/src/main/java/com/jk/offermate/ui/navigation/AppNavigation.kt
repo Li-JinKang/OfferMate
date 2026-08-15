@@ -15,13 +15,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.home.HomeRoute
 import com.jk.offermate.ui.profile.ProfileRoute
+import com.jk.offermate.ui.questions.QuestionsRoute
 
 /**
  * 应用根 UI：底部导航 + NavHost。依赖通过 [container] 向下传递（构造注入）。
@@ -59,9 +62,21 @@ fun OfferMateApp(container: AppContainer) {
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Home.route) { HomeRoute(container) }
+            composable(Screen.Home.route) {
+                HomeRoute(container, onOpenPost = { postId -> navController.navigate("questions/$postId") })
+            }
             composable(Screen.Quiz.route) { PlaceholderScreen("题库 & 刷题") }
             composable(Screen.Profile.route) { ProfileRoute(container) }
+            composable(
+                route = "questions/{postId}",
+                arguments = listOf(navArgument("postId") { type = NavType.StringType })
+            ) { entry ->
+                QuestionsRoute(
+                    container = container,
+                    postId = entry.arguments?.getString("postId").orEmpty(),
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
     }
 }

@@ -1,0 +1,26 @@
+package com.jk.offermate.data.local.entity
+
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+/**
+ * 分析产出的题目（关联到某个 ImportedPost）。
+ * 多值字段用换行连接存储，读取时按行拆分。
+ */
+@Entity(
+    tableName = "question",
+    indices = [Index("postId")]
+)
+data class QuestionEntity(
+    @PrimaryKey val id: String,
+    val postId: String,
+    val orderIndex: Int,
+    val question: String,
+    val answer: String,
+    val tagsCsv: String,
+    val difficulty: String,
+    val keyPointsCsv: String,
+    val relevanceScore: Int,
+    val relevanceReason: String
+)

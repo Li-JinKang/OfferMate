@@ -1,5 +1,7 @@
 package com.jk.offermate.ui.profile
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,11 +15,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,14 +44,24 @@ fun ProfileRoute(container: AppContainer) {
         factory = SettingsViewModel.provideFactory(container.settingsRepository)
     )
     val resumeViewModel: ResumeViewModel = viewModel(
-        factory = ResumeViewModel.provideFactory(container.resumeRepository)
+        factory = ResumeViewModel.provideFactory(container.resumeRepository, container.resumeTextExtractor)
     )
     val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
     val profile by resumeViewModel.profile.collectAsStateWithLifecycle()
+    val pdfText by resumeViewModel.pdfText.collectAsStateWithLifecycle()
+    val pdfLoading by resumeViewModel.pdfLoading.collectAsStateWithLifecycle()
+
+    val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(resumeViewModel::onPdfPicked)
+    }
 
     ProfileScreen(
         settings = settings,
         profile = profile,
+        pdfText = pdfText,
+        pdfLoading = pdfLoading,
+        onPickPdf = { pdfLauncher.launch(arrayOf("application/pdf")) },
+        onPdfConsumed = resumeViewModel::consumePdfText,
         onSaveApiKey = settingsViewModel::updateApiKey,
         onSaveModel = settingsViewModel::updateModel,
         onThresholdChange = settingsViewModel::updateThreshold,
@@ -59,6 +73,10 @@ fun ProfileRoute(container: AppContainer) {
 fun ProfileScreen(
     settings: AppSettings,
     profile: ResumeProfile,
+    pdfText: String?,
+    pdfLoading: Boolean,
+    onPickPdf: () -> Unit,
+    onPdfConsumed: () -> Unit,
     onSaveApiKey: (String) -> Unit,
     onSaveModel: (String) -> Unit,
     onThresholdChange: (Int) -> Unit,
@@ -73,7 +91,14 @@ fun ProfileScreen(
     ) {
         Text("我的", style = MaterialTheme.typography.titleLarge)
 
-        ResumeCard(profile = profile, onSave = onSaveResume)
+        ResumeCard(
+            profile = profile,
+            pdfText = pdfText,
+            pdfLoading = pdfLoading,
+            onPickPdf = onPickPdf,
+            onPdfConsumed = onPdfConsumed,
+            onSave = onSaveResume
+        )
 
         DeepSeekSettingsCard(
             settings = settings,
@@ -91,7 +116,14 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun ResumeCard(profile: ResumeProfile, onSave: (String, String, String) -> Unit) {
+private fun ResumeCard(
+    profile: ResumeProfile,
+    pdfText: String?,
+    pdfLoading: Boolean,
+    onPickPdf: () -> Unit,
+    onPdfConsumed: () -> Unit,
+    onSave: (String, String, String) -> Unit
+) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -102,6 +134,15 @@ private fun ResumeCard(profile: ResumeProfile, onSave: (String, String, String) 
             var role by remember(profile.targetRole) { mutableStateOf(profile.targetRole) }
             var skills by remember(profile.skills) { mutableStateOf(profile.skills.joinToString("，")) }
             var raw by remember(profile.rawText) { mutableStateOf(profile.rawText) }
+
+            // PDF 解析完成后回填到简历文本
+            LaunchedEffect(pdfText) {
+                val t = pdfText
+                if (!t.isNullOrBlank()) {
+                    raw = t
+                    onPdfConsumed()
+                }
+            }
 
             OutlinedTextField(
                 value = role,
@@ -119,11 +160,14 @@ private fun ResumeCard(profile: ResumeProfile, onSave: (String, String, String) 
             OutlinedTextField(
                 value = raw,
                 onValueChange = { raw = it },
-                label = { Text("简历文本（可选，粘贴关键内容）") },
+                label = { Text("简历文本（可手填或导入 PDF）") },
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth()
             )
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onPickPdf, enabled = !pdfLoading) {
+                    Text(if (pdfLoading) "解析中…" else "导入 PDF")
+                }
                 Button(onClick = { onSave(role, skills, raw) }) { Text("保存简历") }
             }
         }

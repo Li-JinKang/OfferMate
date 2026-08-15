@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,10 +21,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,7 +38,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.jk.offermate.data.ai.AnsweredQuestion
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.domain.model.Platform
 import com.jk.offermate.domain.model.Post
@@ -54,11 +52,11 @@ import com.jk.offermate.ui.theme.TextSecondary
 import com.jk.offermate.ui.theme.XiaohongshuRed
 
 @Composable
-fun HomeRoute(container: AppContainer) {
+fun HomeRoute(container: AppContainer, onOpenPost: (String) -> Unit) {
     val viewModel: HomeViewModel = viewModel(
         factory = HomeViewModel.provideFactory(
             postRepository = container.postRepository,
-            importer = container.importInteractor,
+            importScheduler = container.importScheduler,
             resumeRepository = container.resumeRepository
         )
     )
@@ -69,8 +67,9 @@ fun HomeRoute(container: AppContainer) {
         onLinkChange = viewModel::onLinkChange,
         onExtract = viewModel::onExtract,
         onSelectFilter = viewModel::onSelectFilter,
+        onToggleManualPaste = viewModel::onToggleManualPaste,
         onPasteAnalyze = viewModel::onPasteAnalyze,
-        onOpenPost = { /* TODO: 打开历史帖子 */ }
+        onOpenPost = { post -> onOpenPost(post.id) }
     )
 }
 
@@ -80,6 +79,7 @@ fun HomeScreen(
     onLinkChange: (String) -> Unit,
     onExtract: () -> Unit,
     onSelectFilter: (String) -> Unit,
+    onToggleManualPaste: () -> Unit,
     onPasteAnalyze: (String) -> Unit,
     onOpenPost: (Post) -> Unit
 ) {
@@ -93,9 +93,9 @@ fun HomeScreen(
         item {
             ImportCard(
                 linkInput = state.linkInput,
-                isExtracting = state.isExtracting,
                 onLinkChange = onLinkChange,
-                onExtract = onExtract
+                onExtract = onExtract,
+                onToggleManualPaste = onToggleManualPaste
             )
         }
 
@@ -104,25 +104,20 @@ fun HomeScreen(
         }
 
         if (state.manualPasteVisible) {
-            item { ManualPasteCard(isExtracting = state.isExtracting, onAnalyze = onPasteAnalyze) }
+            item { ManualPasteCard(onAnalyze = onPasteAnalyze) }
         }
 
-        if (state.results.isNotEmpty()) {
-            item {
-                Text(
-                    "为你整理了 ${state.results.size} 道相关题",
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-            items(state.results) { q -> ResultCard(q) }
+        item {
+            SourceFilterRow(
+                filters = state.filters,
+                selected = state.selectedFilter,
+                onSelect = onSelectFilter
+            )
+        }
+
+        if (state.posts.isEmpty()) {
+            item { EmptyHint() }
         } else {
-            item {
-                SourceFilterRow(
-                    filters = state.filters,
-                    selected = state.selectedFilter,
-                    onSelect = onSelectFilter
-                )
-            }
             items(state.posts, key = { it.id }) { post ->
                 PostCard(post = post, onOpen = { onOpenPost(post) })
             }
@@ -133,9 +128,9 @@ fun HomeScreen(
 @Composable
 private fun ImportCard(
     linkInput: String,
-    isExtracting: Boolean,
     onLinkChange: (String) -> Unit,
-    onExtract: () -> Unit
+    onExtract: () -> Unit,
+    onToggleManualPaste: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -165,11 +160,14 @@ private fun ImportCard(
                 Spacer(Modifier.size(8.dp))
                 Button(
                     onClick = onExtract,
-                    enabled = linkInput.isNotBlank() && !isExtracting,
+                    enabled = linkInput.isNotBlank(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(if (isExtracting) "解析中…" else "提取")
+                    Text("提取")
                 }
+            }
+            TextButton(onClick = onToggleManualPaste) {
+                Text("读取失败？手动粘贴正文")
             }
         }
     }
@@ -193,7 +191,7 @@ private fun MessageBanner(message: String) {
 }
 
 @Composable
-private fun ManualPasteCard(isExtracting: Boolean, onAnalyze: (String) -> Unit) {
+private fun ManualPasteCard(onAnalyze: (String) -> Unit) {
     var text by remember { mutableStateOf("") }
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -211,11 +209,8 @@ private fun ManualPasteCard(isExtracting: Boolean, onAnalyze: (String) -> Unit) 
             )
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = { onAnalyze(text) },
-                    enabled = text.isNotBlank() && !isExtracting
-                ) {
-                    Text(if (isExtracting) "解析中…" else "分析粘贴内容")
+                Button(onClick = { onAnalyze(text) }, enabled = text.isNotBlank()) {
+                    Text("分析粘贴内容")
                 }
             }
         }
@@ -223,34 +218,9 @@ private fun ManualPasteCard(isExtracting: Boolean, onAnalyze: (String) -> Unit) 
 }
 
 @Composable
-private fun ResultCard(q: AnsweredQuestion) {
-    var revealed by remember { mutableStateOf(false) }
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (q.tags.isNotEmpty()) {
-                    Text(q.tags.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = Modifier.weight(1f))
-                } else {
-                    Spacer(Modifier.weight(1f))
-                }
-                PillTag("相关 ${q.relevanceScore}", BadgeMatchText, BadgeMatchBg)
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(q.question, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(12.dp))
-            if (revealed) {
-                Text(q.answer, style = MaterialTheme.typography.bodyMedium)
-                if (q.keyPoints.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("要点：" + q.keyPoints.joinToString("；"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                }
-            } else {
-                OutlinedButton(onClick = { revealed = true }) { Text("显示答案") }
-            }
-        }
+private fun EmptyHint() {
+    Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
+        Text("还没有记录，粘贴一个面经链接开始吧", color = TextSecondary)
     }
 }
 
@@ -260,7 +230,8 @@ private fun SourceFilterRow(
     selected: String,
     onSelect: (String) -> Unit
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    if (filters.size <= 1) return
+    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(filters, key = { it }) { filter ->
             val isSelected = filter == selected
             Surface(
@@ -304,14 +275,16 @@ private fun PostCard(post: Post, onOpen: () -> Unit) {
             }
             Spacer(Modifier.height(10.dp))
             Text(post.title, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                post.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (post.summary.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    post.summary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
