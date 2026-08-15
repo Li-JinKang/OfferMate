@@ -9,12 +9,13 @@ import com.jk.offermate.data.repository.QuestionRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
- * 题目页 ViewModel：订阅某帖子的题目。
+ * 题目页 ViewModel：订阅某帖子的题目，并支持标记已刷。
  */
 class QuestionsViewModel(
-    questionRepository: QuestionRepository,
+    private val questionRepository: QuestionRepository,
     postId: String
 ) : ViewModel() {
 
@@ -24,6 +25,11 @@ class QuestionsViewModel(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList()
         )
+
+    fun togglePracticed(q: AnsweredQuestion) {
+        if (q.id.isBlank()) return
+        viewModelScope.launch { questionRepository.setPracticed(q.id, !q.practiced) }
+    }
 
     companion object {
         fun provideFactory(questionRepository: QuestionRepository, postId: String) = viewModelFactory {

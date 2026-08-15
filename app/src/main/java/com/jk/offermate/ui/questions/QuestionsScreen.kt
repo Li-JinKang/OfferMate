@@ -23,6 +23,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.data.ai.AnsweredQuestion
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.AnsweredQuestionCard
+import com.jk.offermate.ui.quiz.categoryColor
 import com.jk.offermate.ui.theme.TextSecondary
 
 @Composable
@@ -31,11 +32,15 @@ fun QuestionsRoute(container: AppContainer, postId: String, onBack: () -> Unit) 
         factory = QuestionsViewModel.provideFactory(container.questionRepository, postId)
     )
     val questions by viewModel.questions.collectAsStateWithLifecycle()
-    QuestionsScreen(questions = questions, onBack = onBack)
+    QuestionsScreen(questions = questions, onBack = onBack, onTogglePracticed = viewModel::togglePracticed)
 }
 
 @Composable
-fun QuestionsScreen(questions: List<AnsweredQuestion>, onBack: () -> Unit) {
+fun QuestionsScreen(
+    questions: List<AnsweredQuestion>,
+    onBack: () -> Unit,
+    onTogglePracticed: (AnsweredQuestion) -> Unit
+) {
     Column(
         Modifier
             .fillMaxSize()
@@ -57,7 +62,13 @@ fun QuestionsScreen(questions: List<AnsweredQuestion>, onBack: () -> Unit) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(questions) { q -> AnsweredQuestionCard(q) }
+                items(questions, key = { it.id.ifEmpty { it.question } }) { q ->
+                    AnsweredQuestionCard(
+                        q = q,
+                        borderColor = categoryColor(q.tags.firstOrNull()),
+                        onTogglePracticed = { onTogglePracticed(q) }
+                    )
+                }
             }
         }
     }

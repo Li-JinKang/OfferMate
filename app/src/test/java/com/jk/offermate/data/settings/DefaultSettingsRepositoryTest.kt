@@ -17,10 +17,16 @@ class DefaultSettingsRepositoryTest {
     }
 
     private class FakePreferencesStore : PreferencesStore {
-        val modelState = MutableStateFlow(AppSettings.DEFAULT_MODEL)
+        val providerState = MutableStateFlow(AiProvider.DEEPSEEK.id)
+        val baseUrlState = MutableStateFlow(AiProvider.DEEPSEEK.baseUrl)
+        val modelState = MutableStateFlow(AiProvider.DEEPSEEK.defaultModel)
         val thresholdState = MutableStateFlow(AppSettings.DEFAULT_THRESHOLD)
+        override val provider: Flow<String> = providerState
+        override val baseUrl: Flow<String> = baseUrlState
         override val model: Flow<String> = modelState
         override val relevanceThreshold: Flow<Int> = thresholdState
+        override suspend fun setProvider(providerId: String) { providerState.value = providerId }
+        override suspend fun setBaseUrl(url: String) { baseUrlState.value = url }
         override suspend fun setModel(model: String) { modelState.value = model }
         override suspend fun setRelevanceThreshold(value: Int) { thresholdState.value = value }
     }
@@ -34,7 +40,7 @@ class DefaultSettingsRepositoryTest {
     fun `defaults are exposed and key not configured`() = runTest {
         val settings = repo().settings.first()
 
-        assertEquals(AppSettings.DEFAULT_MODEL, settings.model)
+        assertEquals(AiProvider.DEEPSEEK.defaultModel, settings.model)
         assertEquals(AppSettings.DEFAULT_THRESHOLD, settings.relevanceThreshold)
         assertTrue(settings.deepSeekApiKey.isEmpty())
         assertFalse(settings.isDeepSeekConfigured)
@@ -69,6 +75,30 @@ class DefaultSettingsRepositoryTest {
 
         repository.updateRelevanceThreshold(-20)
         assertEquals(AppSettings.MIN_THRESHOLD, repository.settings.first().relevanceThreshold)
+    }
+
+    @Test
+    fun `updateProvider sets base url and default model for non-custom`() = runTest {
+        val repository = repo()
+
+        repository.updateProvider(AiProvider.KIMI)
+        val settings = repository.settings.first()
+
+        assertEquals(AiProvider.KIMI.id, settings.providerId)
+        assertEquals(AiProvider.KIMI.baseUrl, settings.baseUrl)
+        assertEquals(AiProvider.KIMI.defaultModel, settings.model)
+    }
+
+    @Test
+    fun `updateProvider custom keeps base url editable`() = runTest {
+        val repository = repo()
+
+        repository.updateProvider(AiProvider.CUSTOM)
+        repository.updateBaseUrl("https://my.example.com/v1/")
+        val settings = repository.settings.first()
+
+        assertEquals(AiProvider.CUSTOM.id, settings.providerId)
+        assertEquals("https://my.example.com/v1/", settings.baseUrl)
     }
 
     @Test

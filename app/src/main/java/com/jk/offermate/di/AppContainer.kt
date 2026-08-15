@@ -82,7 +82,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     override val aiClient: AiClient by lazy {
         DeepSeekClient(
             apiKeyProvider = { settingsRepository.settings.first().deepSeekApiKey },
-            modelProvider = { settingsRepository.settings.first().model }
+            modelProvider = { settingsRepository.settings.first().model },
+            baseUrlProvider = {
+                settingsRepository.settings.first().baseUrl.ifBlank { com.jk.offermate.data.settings.AiProvider.DEEPSEEK.baseUrl }
+            }
         )
     }
 

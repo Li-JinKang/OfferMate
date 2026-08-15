@@ -29,7 +29,7 @@ class DeepSeekClientTest {
     private fun client(apiKey: String = "sk-test", model: String = "deepseek-chat") = DeepSeekClient(
         apiKeyProvider = { apiKey },
         modelProvider = { model },
-        baseUrl = server.url("/").toString(),
+        baseUrlProvider = { server.url("/").toString() },
         client = OkHttpClient()
     )
 

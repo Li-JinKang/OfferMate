@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,13 +27,10 @@ import androidx.compose.ui.unit.dp
 import com.jk.offermate.data.ai.AnsweredQuestion
 import com.jk.offermate.ui.theme.BadgeHotBg
 import com.jk.offermate.ui.theme.BadgeHotText
-import com.jk.offermate.ui.theme.BadgeMatchBg
-import com.jk.offermate.ui.theme.BadgeMatchText
 import com.jk.offermate.ui.theme.TextSecondary
 
 /**
- * 题目卡片：题目常显，答案默认隐藏。**整卡点击可在显示/隐藏之间来回切换**，
- * 展开状态用 rememberSaveable 按题目内容保存，滚动离屏后不丢失、也不会被强制遮挡。
+ * 题目卡片：题目常显，答案默认隐藏，整卡点击可来回显示/隐藏。展开状态用 rememberSaveable 按题目保存。
  *
  * @param borderColor 可选彩色边框（题库按分类着色）。
  */
@@ -55,41 +51,36 @@ fun AnsweredQuestionCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (q.tags.isNotEmpty()) {
-                    Text(
-                        q.tags.joinToString(" · "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                        modifier = Modifier.weight(1f)
-                    )
-                } else {
-                    Spacer(Modifier.weight(1f))
-                }
-                if (q.practiced) {
-                    Surface(shape = RoundedCornerShape(8.dp), color = BadgeHotBg) {
+            if (q.tags.isNotEmpty() || q.practiced) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (q.tags.isNotEmpty()) {
                         Text(
-                            "已刷 ✓",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = BadgeHotText,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            q.tags.joinToString(" · "),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                            modifier = Modifier.weight(1f)
                         )
+                    } else {
+                        Spacer(Modifier.weight(1f))
                     }
-                    Spacer(Modifier.size(6.dp))
+                    if (q.practiced) {
+                        Surface(shape = RoundedCornerShape(8.dp), color = BadgeHotBg) {
+                            Text(
+                                "已刷 ✓",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = BadgeHotText,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
                 }
-                Surface(shape = RoundedCornerShape(8.dp), color = BadgeMatchBg) {
-                    Text(
-                        "相关 ${q.relevanceScore}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = BadgeMatchText,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
+                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.height(8.dp))
+
             Text(q.question, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(12.dp))
+
             if (revealed) {
+                Spacer(Modifier.height(12.dp))
                 Text(q.answer, style = MaterialTheme.typography.bodyMedium)
                 if (q.keyPoints.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
@@ -99,10 +90,6 @@ fun AnsweredQuestionCard(
                         color = TextSecondary
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                Text("点按收起答案", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-            } else {
-                Text("点按显示答案", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
 
             onTogglePracticed?.let { toggle ->

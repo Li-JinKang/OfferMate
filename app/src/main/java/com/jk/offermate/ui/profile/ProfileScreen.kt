@@ -2,14 +2,18 @@ package com.jk.offermate.ui.profile
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -20,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,8 +43,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.data.ai.ResumeProfile
+import com.jk.offermate.data.settings.AiProvider
 import com.jk.offermate.data.settings.AppSettings
 import com.jk.offermate.di.AppContainer
+import com.jk.offermate.ui.theme.OutlineSoft
 
 @Composable
 fun ProfileRoute(container: AppContainer) {
@@ -68,6 +75,8 @@ fun ProfileRoute(container: AppContainer) {
         onSaveApiKey = settingsViewModel::updateApiKey,
         onSaveModel = settingsViewModel::updateModel,
         onThresholdChange = settingsViewModel::updateThreshold,
+        onSelectProvider = settingsViewModel::updateProvider,
+        onSaveBaseUrl = settingsViewModel::updateBaseUrl,
         onSaveResume = resumeViewModel::save
     )
 }
@@ -83,6 +92,8 @@ fun ProfileScreen(
     onSaveApiKey: (String) -> Unit,
     onSaveModel: (String) -> Unit,
     onThresholdChange: (Int) -> Unit,
+    onSelectProvider: (AiProvider) -> Unit,
+    onSaveBaseUrl: (String) -> Unit,
     onSaveResume: (String, String, String) -> Unit
 ) {
     Column(
@@ -108,11 +119,13 @@ fun ProfileScreen(
 
         val settingsSubtitle = if (settings.isDeepSeekConfigured) "已配置" else "未配置"
         ExpandableCard(title = "AI 设置（DeepSeek）", subtitle = settingsSubtitle) {
-            DeepSeekContent(
+            AiSettingsContent(
                 settings = settings,
                 onSaveApiKey = onSaveApiKey,
                 onSaveModel = onSaveModel,
-                onThresholdChange = onThresholdChange
+                onThresholdChange = onThresholdChange,
+                onSelectProvider = onSelectProvider,
+                onSaveBaseUrl = onSaveBaseUrl
             )
         }
 
@@ -208,12 +221,52 @@ private fun ResumeContent(
 }
 
 @Composable
-private fun DeepSeekContent(
+private fun AiSettingsContent(
     settings: AppSettings,
     onSaveApiKey: (String) -> Unit,
     onSaveModel: (String) -> Unit,
-    onThresholdChange: (Int) -> Unit
+    onThresholdChange: (Int) -> Unit,
+    onSelectProvider: (AiProvider) -> Unit,
+    onSaveBaseUrl: (String) -> Unit
 ) {
+    // 服务商选择
+    Text("服务商", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(Modifier.horizontalScroll(rememberScrollState())) {
+        AiProvider.entries.forEach { p ->
+            val selected = settings.provider == p
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                border = if (selected) null else BorderStroke(1.dp, OutlineSoft),
+                modifier = Modifier.clickable { onSelectProvider(p) }
+            ) {
+                Text(
+                    p.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
+            Spacer(Modifier.size(8.dp))
+        }
+    }
+
+    // 接口地址：自定义可编辑，其余显示默认（只读）
+    var urlInput by remember(settings.baseUrl) { mutableStateOf(settings.baseUrl) }
+    OutlinedTextField(
+        value = urlInput,
+        onValueChange = { urlInput = it },
+        label = { Text("接口地址") },
+        singleLine = true,
+        enabled = settings.provider.isCustom,
+        modifier = Modifier.fillMaxWidth()
+    )
+    if (settings.provider.isCustom) {
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { onSaveBaseUrl(urlInput) }) { Text("保存地址") }
+        }
+    }
+
     var keyInput by remember(settings.deepSeekApiKey) { mutableStateOf(settings.deepSeekApiKey) }
     var keyVisible by remember { mutableStateOf(false) }
     OutlinedTextField(

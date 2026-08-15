@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -66,7 +67,8 @@ fun QuizOverviewScreen(categories: List<CategorySummary>, onOpenCategory: (Strin
         }
         PuzzleGrid(
             count = categories.size,
-            columns = 2,
+            columns = 3,
+            cellHeight = 112.dp,
             modifier = Modifier.padding(horizontal = 8.dp)
         ) { index, shape ->
             val c = categories[index]
@@ -78,16 +80,21 @@ fun QuizOverviewScreen(categories: List<CategorySummary>, onOpenCategory: (Strin
                     .fillMaxSize()
                     .clickable { onOpenCategory(c.name) }
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 6.dp)
+                ) {
                     Text(
                         c.name,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "${c.practiced}/${c.total} 已刷",
-                        style = MaterialTheme.typography.bodyMedium,
+                        "${c.practiced}/${c.total}",
+                        style = MaterialTheme.typography.bodySmall,
                         color = TextPrimary
                     )
                 }

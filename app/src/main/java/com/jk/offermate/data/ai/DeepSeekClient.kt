@@ -25,16 +25,15 @@ import java.util.concurrent.TimeUnit
 class DeepSeekClient(
     private val apiKeyProvider: suspend () -> String,
     private val modelProvider: suspend () -> String = { AiDefaults.MODEL },
-    baseUrl: String = "https://api.deepseek.com/",
+    private val baseUrlProvider: suspend () -> String = { "https://api.deepseek.com/" },
     private val client: OkHttpClient = defaultClient()
 ) : AiClient {
 
-    private val endpoint = baseUrl.trimEnd('/') + "/chat/completions"
-
     override suspend fun chat(messages: List<ChatMessage>): String {
         val apiKey = apiKeyProvider().trim()
-        if (apiKey.isEmpty()) throw AiException("未配置 DeepSeek API Key，请在设置中填写")
+        if (apiKey.isEmpty()) throw AiException("未配置 API Key，请在设置中填写")
 
+        val endpoint = baseUrlProvider().trim().trimEnd('/') + "/chat/completions"
         val requestBody = buildRequestBody(modelProvider(), messages)
         val request = Request.Builder()
             .url(endpoint)

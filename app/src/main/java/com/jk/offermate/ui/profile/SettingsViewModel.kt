@@ -36,6 +36,14 @@ class SettingsViewModel(
         viewModelScope.launch { repository.updateRelevanceThreshold(value) }
     }
 
+    fun updateProvider(provider: com.jk.offermate.data.settings.AiProvider) {
+        viewModelScope.launch { repository.updateProvider(provider) }
+    }
+
+    fun updateBaseUrl(url: String) {
+        viewModelScope.launch { repository.updateBaseUrl(url) }
+    }
+
     companion object {
         fun provideFactory(repository: SettingsRepository) = viewModelFactory {
             initializer { SettingsViewModel(repository) }
