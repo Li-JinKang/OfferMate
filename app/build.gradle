@@ -1,4 +1,7 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
+    // AGP 9 内置 Kotlin 支持，无需再单独 apply org.jetbrains.kotlin.android
     alias(libs.plugins.android.application)
 }
 
@@ -28,8 +31,15 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// 使用 AGP 内置 Kotlin 的扩展配置 JVM 目标
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
     }
 }
 
@@ -38,7 +48,26 @@ dependencies {
     implementation libs.appcompat
     implementation libs.constraintlayout
     implementation libs.material
+
+    // Content reading (P2)
+    implementation libs.jsoup
+    implementation libs.readability4j
+    implementation libs.okhttp
+    implementation libs.kotlinx.coroutines.core
+    implementation libs.kotlinx.serialization.json
+
     testImplementation libs.junit
+    testImplementation libs.okhttp.mockwebserver
+    testImplementation libs.kotlinx.coroutines.test
     androidTestImplementation libs.espresso.core
     androidTestImplementation libs.ext.junit
+}
+
+// 让单元测试里的 println 输出可见（用于 LiveLinkReadingTest 的人工校验）
+tasks.withType(Test).configureEach {
+    testLogging {
+        showStandardStreams = true
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
 }

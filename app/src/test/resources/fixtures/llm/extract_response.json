@@ -1,0 +1,17 @@
+{
+  "questions": [
+    {
+      "question": "说一下 Activity 的生命周期，onStart 和 onResume 的区别是什么？",
+      "tags": ["Android", "生命周期"],
+      "source": "面试官先让我做了自我介绍，然后针对简历里的项目问了不少细节"
+    },
+    {
+      "question": "Handler、Looper、MessageQueue 三者之间的关系是怎样的？",
+      "tags": ["Android", "消息机制"]
+    },
+    {
+      "question": "手写一个 LRU 缓存，要求 get 和 put 都是 O(1) 时间复杂度。",
+      "tags": ["算法", "数据结构"]
+    }
+  ]
+}
