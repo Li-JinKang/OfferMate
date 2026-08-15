@@ -1,6 +1,7 @@
 package com.jk.offermate.work
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -38,9 +39,20 @@ class NotificationHelper(private val context: Context) {
         NotificationManagerCompat.from(context).notify(nextId(), notification)
     }
 
+    /** 前台进度通知（分析进行中，常驻不可滑除）。 */
+    fun buildProgressNotification(text: String): Notification =
+        NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("正在分析面经")
+            .setContentText(text)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
     private fun nextId(): Int = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
 
-    private companion object {
+    companion object {
         const val CHANNEL_ID = "offermate_analysis"
+        const val FOREGROUND_ID = 1001
     }
 }

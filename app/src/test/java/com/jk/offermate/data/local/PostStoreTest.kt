@@ -32,6 +32,7 @@ class PostStoreTest {
     private class FakeQuestionDao : QuestionDao {
         val byPost = MutableStateFlow<Map<String, List<QuestionEntity>>>(emptyMap())
         override fun observeByPost(postId: String): Flow<List<QuestionEntity>> = byPost.map { it[postId] ?: emptyList() }
+        override fun observeAll(): Flow<List<QuestionEntity>> = byPost.map { it.values.flatten() }
         override suspend fun countByPost(postId: String): Int = byPost.value[postId]?.size ?: 0
         override suspend fun insertAll(questions: List<QuestionEntity>) {
             val pid = questions.firstOrNull()?.postId ?: return

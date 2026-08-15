@@ -1,7 +1,10 @@
 package com.jk.offermate.work
 
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.jk.offermate.OfferMateApplication
 import com.jk.offermate.data.importer.ImportResult
@@ -26,6 +29,8 @@ class AnalyzePostWorker(
         val url = inputData.getString(KEY_URL).orEmpty()
         val mode = inputData.getString(KEY_MODE) ?: MODE_URL
         val text = inputData.getString(KEY_TEXT).orEmpty()
+
+        runCatching { setForeground(getForegroundInfo()) }
 
         return try {
             store.markStatus(id, ImportStatus.ANALYZING)
@@ -61,6 +66,15 @@ class AnalyzePostWorker(
         } catch (t: Throwable) {
             store.markFailed(id)
             Result.success()
+        }
+    }
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val notification = NotificationHelper(applicationContext).buildProgressNotification("正在读取并分析面经…")
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ForegroundInfo(NotificationHelper.FOREGROUND_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(NotificationHelper.FOREGROUND_ID, notification)
         }
     }
 

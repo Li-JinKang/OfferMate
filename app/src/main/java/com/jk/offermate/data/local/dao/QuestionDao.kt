@@ -13,6 +13,9 @@ interface QuestionDao {
     @Query("SELECT * FROM question WHERE postId = :postId ORDER BY orderIndex")
     fun observeByPost(postId: String): Flow<List<QuestionEntity>>
 
+    @Query("SELECT * FROM question ORDER BY relevanceScore DESC, orderIndex")
+    fun observeAll(): Flow<List<QuestionEntity>>
+
     @Query("SELECT COUNT(*) FROM question WHERE postId = :postId")
     suspend fun countByPost(postId: String): Int
 
