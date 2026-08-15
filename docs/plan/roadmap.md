@@ -81,10 +81,10 @@
 
 ### P2.4 WebView 动态读取适配器（设备侧，后置）
 - [ ] 通用 `WebViewContentReader`：离屏 WebView 加载 URL，`onPageFinished` 后注入 `readability.js`（assets）提取正文；超时兜底 `document.body.innerText`。
-- [ ] 小红书（参考 [`xhs-reading.md`](./xhs-reading.md)，路线 A）：
-  - [ ] `XhsStateParser`（纯函数）解析 `__INITIAL_STATE__` JSON → 标题/正文 + JVM 单测（JSON 夹具）。
-  - [ ] `XhsWebViewReader : DynamicContentReader`：WebView + CookieManager 登录态 + JS 注入。
-  - [ ] WebView 登录页与登录态持久化/失效处理。
+- [x] 小红书正文提取（静态方案，见 [`xhs-reading.md`](./xhs-reading.md) 第 7 节）：
+  - [x] `XhsNoteExtractor`（纯函数）从静态 HTML 的 `__INITIAL_STATE__` 提取笔记 title/desc、去评论/推荐噪声 + JVM 单测；已用真实链接验证。
+  - [x] 接入 `HtmlContentExtractor`（小红书域名优先，失败回退 Readability/手动粘贴）。
+  - [ ] （后备）`XhsWebViewReader : DynamicContentReader` + 登录态：仅当遇到需登录/静态拿不到的笔记再实现。
 - [ ] instrumented 测试或手动验证（不纳入 JVM 单测门槛）。
 
 **验收标准**

@@ -65,3 +65,14 @@ interface DynamicContentReader { suspend fun read(url: String): PostContent? }
 - [ ] WebView 登录页与登录态持久化/失效处理。
 - [ ] androidTest / 手动验证：真机登录 + 真实链接读取。
 - [ ] （可选，增强）路线 B：WebView 取签名 + OkHttp 调接口。
+
+## 7. 实现结论（已落地）
+
+实测发现：小红书**分享页的静态 HTML 里已 SSR 输出 `window.__INITIAL_STATE__`**（含笔记 `title` / `desc`），OkHttp 静态抓取即可拿到，无需 WebView。
+
+因此采用**静态解析**作为首选实现：
+- `XhsNoteExtractor`（纯函数）：从 `__INITIAL_STATE__` 取第一个 `title` + `desc`（笔记本体），JSON 反转义、去掉 `[话题]` 占位，剔除评论/推荐噪声。
+- 接入 `HtmlContentExtractor`：小红书域名优先走 `XhsNoteExtractor`，失败再回退 Readability，最后"手动粘贴"。
+- 已用真实链接验证：正文从 ~701 字（含评论/推荐）降为纯笔记正文；单测 `XhsNoteExtractorTest` 覆盖去噪。
+
+**WebView 登录态方案（路线 A/B）改为后备**：仅当遇到需登录或静态拿不到 `__INITIAL_STATE__` 的笔记时再实现（接口 `DynamicContentReader` 已预留，接入不影响上层）。
