@@ -26,8 +26,8 @@
 目标：**不联网**实现并测试"抽题 → 相关性筛选 → 作答"三步逻辑。真实 DeepSeek 调用放到 P5。
 
 ### P1.1 领域模型
-- [ ] 定义模型：`ResumeProfile`、`RawPost`、`ExtractedQuestion`、`RelevanceResult`、`AnsweredQuestion`（不可变数据类）。
-- [ ] 定义 DTO 与 `@Serializable` 结构，用于解析 LLM 的 JSON 输出。
+- [x] 定义模型：`ResumeProfile`、`ExtractedQuestion`、`RelevanceResult`、`AnsweredQuestion`（`RawPost` 以 P2 的 `PostContent` 代替）。
+- [x] JSON 解析：用 `kotlinx-serialization-json` 运行时 `JsonElement` 动态解析（无需 @Serializable/编译器插件），共享工具 `JsonSupport`。
 
 ### P1.2 AiClient 抽象（可 mock）
 - [x] 定义接口 `AiClient { suspend fun chat(messages): String }`（返回原始文本）。
@@ -36,9 +36,9 @@
 
 ### P1.3 三步能力（每步 = 构造 Prompt + 解析响应）
 - [x] `QuestionExtractor`：`buildMessages(postText)` + `parse(raw) -> List<ExtractedQuestion>`。
-- [ ] `RelevanceMatcher`：`buildPrompt(questions, resumeProfile)` + `parse(json) -> List<RelevanceResult>`（含 0-100 分与理由），并按阈值过滤/排序。
-- [ ] `AnswerGenerator`：`buildPrompt(questions, resume)` + `parse(json) -> List<AnsweredQuestion>`。
-- [ ] `AnalysisPipeline`：编排三步（抽题→筛选→作答），输入 `RawPost + ResumeProfile`，输出 `List<AnsweredQuestion>`；支持长文本分块合并。
+- [x] `RelevanceMatcher`：`buildMessages(questions, profile)` + `parse(raw, questions) -> List<RelevanceResult>`（0-100 分+理由+命中技能），按阈值过滤/排序。
+- [x] `AnswerGenerator`：`buildMessages(relevant, profile)` + `parse(raw, relevant) -> List<AnsweredQuestion>`（答案/难度/要点，带回相关性）。
+- [x] `AnalysisPipeline`：编排三步（抽题→筛选→作答）。长文本分块合并留待后续。
 
 ### P1.4 解析健壮性
 - [x] JSON 解析容错：处理 LLM 输出被 ```` ```json ```` 包裹、尾随文本、字段缺失等情况（用 `kotlinx-serialization-json` 运行时 API，无需编译器插件）。
@@ -46,11 +46,11 @@
 
 ### P1.5 单元测试（必须全绿）
 - [x] `QuestionExtractorTest`：夹具响应/```json```包裹/裸数组/空题过滤/空结果/畸形抛异常/Prompt 注入/端到端 extract。
-- [ ] `RelevanceMatcherTest`：断言评分解析、阈值过滤、排序正确。
-- [ ] `AnswerGeneratorTest`：断言答案与难度解析正确。
-- [ ] `AnalysisPipelineTest`：用 `FakeAiClient` 串起三步 → 断言最终 `AnsweredQuestion` 列表；覆盖"无相关题目""部分相关"两种场景。
-- [ ] Prompt 快照测试：断言关键约束（要求 JSON、简历上下文注入）出现在 prompt 中。
-- [ ] 解析异常用例：畸形 JSON → 抛 `AiException`。
+- [x] `RelevanceMatcherTest`：评分解析、阈值过滤、排序、index 映射与越界忽略。
+- [x] `AnswerGeneratorTest`：答案/难度/要点解析、相关性带回、空输入短路。
+- [x] `AnalysisPipelineTest`：`FakeAiClient` 串起三步；覆盖"无题目""无相关题目""正常"三种场景。
+- [x] Prompt 快照测试：断言要求 JSON、简历上下文与题目序号注入。
+- [x] 解析异常用例：畸形 JSON → 抛 `AiException`。
 
 **验收标准**
 - 上述所有单测在 `./gradlew testDebugUnitTest` 下全绿。

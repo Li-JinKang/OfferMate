@@ -1,0 +1,16 @@
+{
+  "answers": [
+    {
+      "index": 0,
+      "answer": "onStart 时 Activity 已可见但尚未获得焦点、不可交互；onResume 之后位于前台且可交互。仅 onPause 不 onStop 常见于弹出非全屏对话框/多窗口部分遮挡。",
+      "difficulty": "medium",
+      "keyPoints": ["生命周期回调顺序", "可见性与可交互的区别"]
+    },
+    {
+      "index": 1,
+      "answer": "Handler 借助 Looper 不断从 MessageQueue 取出并分发消息，实现线程间通信。子线程直接 new Handler 需先 Looper.prepare()，否则抛异常。",
+      "difficulty": "medium",
+      "keyPoints": ["Looper 循环取消息", "子线程创建 Handler 需 prepare"]
+    }
+  ]
+}

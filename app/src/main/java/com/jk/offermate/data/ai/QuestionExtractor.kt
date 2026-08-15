@@ -1,6 +1,5 @@
 package com.jk.offermate.data.ai
 
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -45,11 +44,11 @@ class QuestionExtractor(private val aiClient: AiClient) {
      * 容错：兼容被 ```json``` 包裹、前后有多余文字、直接返回数组或返回 {"questions":[...]}。
      */
     fun parse(raw: String): List<ExtractedQuestion> {
-        val jsonText = extractJsonBlock(raw)
+        val jsonText = JsonSupport.extractJsonBlock(raw)
             ?: throw AiException("模型输出中未找到有效 JSON：${raw.take(200)}")
 
         val element: JsonElement = try {
-            Json.parseToJsonElement(jsonText)
+            JsonSupport.json.parseToJsonElement(jsonText)
         } catch (e: Exception) {
             throw AiException("JSON 解析失败：${jsonText.take(200)}", e)
         }
@@ -72,22 +71,5 @@ class QuestionExtractor(private val aiClient: AiClient) {
                 ?.jsonPrimitive?.contentOrNull?.trim()?.takeIf(String::isNotEmpty)
             ExtractedQuestion(question = question, tags = tags, sourceSnippet = source)
         }
-    }
-
-    /** 从原始文本中截取 JSON 片段（优先取 ``` 代码块，其次取首个 { 或 [ 到匹配的收尾符号）。 */
-    private fun extractJsonBlock(raw: String): String? {
-        val fenced = FENCE_REGEX.find(raw)?.groupValues?.getOrNull(1)?.trim()
-        val candidate = if (!fenced.isNullOrEmpty()) fenced else raw
-
-        val start = candidate.indexOfFirst { it == '{' || it == '[' }
-        if (start < 0) return null
-        val close = if (candidate[start] == '{') '}' else ']'
-        val end = candidate.lastIndexOf(close)
-        if (end <= start) return null
-        return candidate.substring(start, end + 1)
-    }
-
-    companion object {
-        private val FENCE_REGEX = Regex("```(?:json)?\\s*([\\s\\S]*?)```", RegexOption.IGNORE_CASE)
     }
 }

@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "index": 0,
+      "score": 95,
+      "reason": "与 Android 生命周期/JVM 背景高度相关",
+      "matchedSkills": ["Android", "JVM"]
+    },
+    {
+      "index": 1,
+      "score": 70,
+      "reason": "消息机制是 Android 常考点",
+      "matchedSkills": ["Android"]
+    },
+    {
+      "index": 2,
+      "score": 40,
+      "reason": "纯算法题与目标岗位关联较弱",
+      "matchedSkills": []
+    }
+  ]
+}
