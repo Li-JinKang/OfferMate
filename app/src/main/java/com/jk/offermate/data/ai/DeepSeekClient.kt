@@ -14,6 +14,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
 
 /**
  * DeepSeek 的 [AiClient] 实现（OpenAI 兼容 /chat/completions）。BYOK：Key 与模型名运行时读取。
@@ -25,7 +26,7 @@ class DeepSeekClient(
     private val apiKeyProvider: suspend () -> String,
     private val modelProvider: suspend () -> String = { AiDefaults.MODEL },
     baseUrl: String = "https://api.deepseek.com/",
-    private val client: OkHttpClient = OkHttpClient()
+    private val client: OkHttpClient = defaultClient()
 ) : AiClient {
 
     private val endpoint = baseUrl.trimEnd('/') + "/chat/completions"
@@ -85,6 +86,14 @@ class DeepSeekClient(
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+        /** DeepSeek 生成长文本较慢，给足读超时，避免 SocketTimeout。 */
+        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .callTimeout(180, TimeUnit.SECONDS)
+            .build()
     }
 }
 
