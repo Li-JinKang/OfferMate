@@ -2,6 +2,12 @@ package com.jk.offermate.di
 
 import android.content.Context
 import androidx.room.Room
+import com.jk.offermate.data.ai.AiClient
+import com.jk.offermate.data.ai.AnalysisPipeline
+import com.jk.offermate.data.ai.AnswerGenerator
+import com.jk.offermate.data.ai.DeepSeekClient
+import com.jk.offermate.data.ai.QuestionExtractor
+import com.jk.offermate.data.ai.RelevanceMatcher
 import com.jk.offermate.data.local.OfferMateDatabase
 import com.jk.offermate.data.repository.FakePostRepository
 import com.jk.offermate.data.settings.DataStorePreferencesStore
@@ -9,6 +15,7 @@ import com.jk.offermate.data.settings.DefaultSettingsRepository
 import com.jk.offermate.data.settings.EncryptedPrefsKeyStore
 import com.jk.offermate.data.settings.SettingsRepository
 import com.jk.offermate.domain.repository.PostRepository
+import kotlinx.coroutines.flow.first
 
 /**
  * 应用级依赖容器（手动依赖注入组合根）。集中构造并持有依赖，向上暴露接口。
@@ -16,6 +23,8 @@ import com.jk.offermate.domain.repository.PostRepository
 interface AppContainer {
     val postRepository: PostRepository
     val settingsRepository: SettingsRepository
+    val aiClient: AiClient
+    val analysisPipeline: AnalysisPipeline
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -30,6 +39,22 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         DefaultSettingsRepository(
             secureKeyStore = EncryptedPrefsKeyStore(context),
             preferencesStore = DataStorePreferencesStore(context)
+        )
+    }
+
+    // BYOK：运行时从设置读取 Key 与模型名
+    override val aiClient: AiClient by lazy {
+        DeepSeekClient(
+            apiKeyProvider = { settingsRepository.settings.first().deepSeekApiKey },
+            modelProvider = { settingsRepository.settings.first().model }
+        )
+    }
+
+    override val analysisPipeline: AnalysisPipeline by lazy {
+        AnalysisPipeline(
+            extractor = QuestionExtractor(aiClient),
+            matcher = RelevanceMatcher(aiClient),
+            answerer = AnswerGenerator(aiClient)
         )
     }
 }
