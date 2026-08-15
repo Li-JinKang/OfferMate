@@ -17,5 +17,6 @@ data class ImportedPostEntity(
     val status: String,
     val questionCount: Int,
     val importedAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val pinned: Boolean = false
 )

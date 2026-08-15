@@ -27,7 +27,8 @@ object PostMappers {
             timeLabel = relativeTimeLabel(entity.importedAt, nowMillis),
             category = platformName(platform),
             parsedQuestionCount = entity.questionCount,
-            badge = if (status == ImportStatus.DONE) null else PostBadge.Label(status.label)
+            badge = if (status == ImportStatus.DONE) null else PostBadge.Label(status.label),
+            pinned = entity.pinned
         )
     }
 

@@ -25,6 +25,9 @@ class PostStoreTest {
         override suspend fun updateStatus(id: String, status: String, updatedAt: Long) {
             posts.value[id]?.let { posts.value = posts.value + (id to it.copy(status = status, updatedAt = updatedAt)) }
         }
+        override suspend fun setPinned(id: String, pinned: Boolean, updatedAt: Long) {
+            posts.value[id]?.let { posts.value = posts.value + (id to it.copy(pinned = pinned, updatedAt = updatedAt)) }
+        }
         override suspend fun delete(id: String) { posts.value = posts.value - id }
         override suspend fun clear() { posts.value = emptyMap() }
     }

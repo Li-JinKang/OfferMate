@@ -42,6 +42,7 @@ import com.jk.offermate.di.AppContainer
 import com.jk.offermate.domain.model.Platform
 import com.jk.offermate.domain.model.Post
 import com.jk.offermate.domain.model.PostBadge
+import com.jk.offermate.ui.components.SwipeableActionCard
 import com.jk.offermate.ui.theme.BadgeHotBg
 import com.jk.offermate.ui.theme.BadgeHotText
 import com.jk.offermate.ui.theme.BadgeMatchBg
@@ -69,7 +70,9 @@ fun HomeRoute(container: AppContainer, onOpenPost: (String) -> Unit) {
         onSelectFilter = viewModel::onSelectFilter,
         onToggleManualPaste = viewModel::onToggleManualPaste,
         onPasteAnalyze = viewModel::onPasteAnalyze,
-        onOpenPost = { post -> onOpenPost(post.id) }
+        onOpenPost = { post -> onOpenPost(post.id) },
+        onTogglePin = viewModel::onTogglePin,
+        onDelete = viewModel::onDelete
     )
 }
 
@@ -81,7 +84,9 @@ fun HomeScreen(
     onSelectFilter: (String) -> Unit,
     onToggleManualPaste: () -> Unit,
     onPasteAnalyze: (String) -> Unit,
-    onOpenPost: (Post) -> Unit
+    onOpenPost: (Post) -> Unit,
+    onTogglePin: (Post) -> Unit,
+    onDelete: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -119,7 +124,13 @@ fun HomeScreen(
             item { EmptyHint() }
         } else {
             items(state.posts, key = { it.id }) { post ->
-                PostCard(post = post, onOpen = { onOpenPost(post) })
+                SwipeableActionCard(
+                    pinned = post.pinned,
+                    onTogglePin = { onTogglePin(post) },
+                    onDelete = { onDelete(post.id) }
+                ) {
+                    PostCard(post = post, onOpen = { onOpenPost(post) })
+                }
             }
         }
     }
@@ -260,6 +271,10 @@ private fun PostCard(post: Post, onOpen: () -> Unit) {
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (post.pinned) {
+                    PillTag("置顶", BadgeMatchText, BadgeMatchBg)
+                    Spacer(Modifier.size(6.dp))
+                }
                 Box(
                     Modifier
                         .size(8.dp)

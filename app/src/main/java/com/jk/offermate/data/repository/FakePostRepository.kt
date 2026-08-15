@@ -43,4 +43,8 @@ class FakePostRepository : PostRepository {
 
     override fun categories(): List<String> =
         samples.map { it.category }.distinct()
+
+    override suspend fun setPinned(id: String, pinned: Boolean) {}
+
+    override suspend fun delete(id: String) {}
 }

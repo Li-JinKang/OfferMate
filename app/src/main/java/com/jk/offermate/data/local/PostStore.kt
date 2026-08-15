@@ -40,6 +40,10 @@ class PostStore(
         postDao.updateStatus(id, status.name, now())
     }
 
+    suspend fun setPinned(id: String, pinned: Boolean) {
+        postDao.setPinned(id, pinned, now())
+    }
+
     /** 分析成功：写入题目并把帖子置为 DONE。 */
     suspend fun saveSuccess(id: String, title: String, summary: String, questions: List<AnsweredQuestion>) {
         questionDao.deleteByPost(id)

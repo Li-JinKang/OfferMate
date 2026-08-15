@@ -10,8 +10,11 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ImportedPostDao {
 
-    @Query("SELECT * FROM imported_post ORDER BY importedAt DESC")
+    @Query("SELECT * FROM imported_post ORDER BY pinned DESC, importedAt DESC")
     fun observeAll(): Flow<List<ImportedPostEntity>>
+
+    @Query("UPDATE imported_post SET pinned = :pinned, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun setPinned(id: String, pinned: Boolean, updatedAt: Long)
 
     @Query("SELECT * FROM imported_post WHERE id = :id")
     fun observeById(id: String): Flow<ImportedPostEntity?>

@@ -12,7 +12,7 @@ import com.jk.offermate.data.local.entity.QuestionEntity
  */
 @Database(
     entities = [ImportedPostEntity::class, QuestionEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class OfferMateDatabase : RoomDatabase() {

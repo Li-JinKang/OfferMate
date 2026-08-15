@@ -23,5 +23,6 @@ data class Post(
     val timeLabel: String,
     val category: String,
     val parsedQuestionCount: Int,
-    val badge: PostBadge? = null
+    val badge: PostBadge? = null,
+    val pinned: Boolean = false
 )

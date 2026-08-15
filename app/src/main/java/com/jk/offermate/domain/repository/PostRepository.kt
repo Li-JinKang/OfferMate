@@ -16,4 +16,10 @@ interface PostRepository {
 
     /** 可用于筛选的分类（不含"全部来源"）。 */
     fun categories(): List<String>
+
+    /** 置顶/取消置顶。 */
+    suspend fun setPinned(id: String, pinned: Boolean)
+
+    /** 删除帖子及其题目。 */
+    suspend fun delete(id: String)
 }

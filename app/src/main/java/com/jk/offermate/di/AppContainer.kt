@@ -56,7 +56,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val postRepository: PostRepository by lazy {
-        RoomPostRepository(database.importedPostDao())
+        RoomPostRepository(database.importedPostDao(), database.questionDao())
     }
 
     override val questionRepository: QuestionRepository by lazy {

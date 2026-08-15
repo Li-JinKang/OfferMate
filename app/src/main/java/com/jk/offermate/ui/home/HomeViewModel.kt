@@ -82,6 +82,14 @@ class HomeViewModel(
         }
     }
 
+    fun onTogglePin(post: com.jk.offermate.domain.model.Post) {
+        viewModelScope.launch { postRepository.setPinned(post.id, !post.pinned) }
+    }
+
+    fun onDelete(postId: String) {
+        viewModelScope.launch { postRepository.delete(postId) }
+    }
+
     private suspend fun hasResume(): Boolean {
         val ok = resumeRepository.profile.first().targetRole.isNotBlank()
         if (!ok) _uiState.update { it.copy(message = "请先在\"我的\"里填写目标岗位/简历") }
