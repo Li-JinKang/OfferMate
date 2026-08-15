@@ -5,7 +5,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
 /**
- * 基于 EncryptedSharedPreferences 的安全 Key 存储：DeepSeek Key 加密落盘，绝不明文。
+ * 基于 EncryptedSharedPreferences 的安全 Key 存储：按服务商 id 分别加密存 Key。
  */
 class EncryptedPrefsKeyStore(context: Context) : SecureKeyStore {
 
@@ -22,13 +22,12 @@ class EncryptedPrefsKeyStore(context: Context) : SecureKeyStore {
         )
     }
 
-    override fun getDeepSeekApiKey(): String = prefs.getString(KEY_DEEPSEEK, "").orEmpty()
+    override fun getApiKey(providerId: String): String =
+        prefs.getString(keyName(providerId), "").orEmpty()
 
-    override fun setDeepSeekApiKey(key: String) {
-        prefs.edit().putString(KEY_DEEPSEEK, key).apply()
+    override fun setApiKey(providerId: String, key: String) {
+        prefs.edit().putString(keyName(providerId), key).apply()
     }
 
-    private companion object {
-        const val KEY_DEEPSEEK = "deepseek_api_key"
-    }
+    private fun keyName(providerId: String) = "api_key_$providerId"
 }

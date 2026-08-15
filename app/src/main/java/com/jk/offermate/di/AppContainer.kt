@@ -81,10 +81,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     // BYOK：运行时从设置读取 Key 与模型名
     override val aiClient: AiClient by lazy {
         DeepSeekClient(
-            apiKeyProvider = { settingsRepository.settings.first().deepSeekApiKey },
-            modelProvider = { settingsRepository.settings.first().model },
+            apiKeyProvider = { settingsRepository.activeConfig.first().apiKey },
+            modelProvider = { settingsRepository.activeConfig.first().model },
             baseUrlProvider = {
-                settingsRepository.settings.first().baseUrl.ifBlank { com.jk.offermate.data.settings.AiProvider.DEEPSEEK.baseUrl }
+                settingsRepository.activeConfig.first().baseUrl.ifBlank { com.jk.offermate.data.settings.AiProvider.DEEPSEEK.baseUrl }
             }
         )
     }

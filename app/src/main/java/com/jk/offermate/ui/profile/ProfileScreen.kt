@@ -56,7 +56,7 @@ fun ProfileRoute(container: AppContainer) {
     val resumeViewModel: ResumeViewModel = viewModel(
         factory = ResumeViewModel.provideFactory(container.resumeRepository, container.resumeTextExtractor)
     )
-    val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
+    val settingsUi by settingsViewModel.uiState.collectAsStateWithLifecycle()
     val profile by resumeViewModel.profile.collectAsStateWithLifecycle()
     val pdfText by resumeViewModel.pdfText.collectAsStateWithLifecycle()
     val pdfLoading by resumeViewModel.pdfLoading.collectAsStateWithLifecycle()
@@ -66,34 +66,30 @@ fun ProfileRoute(container: AppContainer) {
     }
 
     ProfileScreen(
-        settings = settings,
+        settingsUi = settingsUi,
         profile = profile,
         pdfText = pdfText,
         pdfLoading = pdfLoading,
         onPickPdf = { pdfLauncher.launch(arrayOf("application/pdf")) },
         onPdfConsumed = resumeViewModel::consumePdfText,
-        onSaveApiKey = settingsViewModel::updateApiKey,
-        onSaveModel = settingsViewModel::updateModel,
-        onThresholdChange = settingsViewModel::updateThreshold,
-        onSelectProvider = settingsViewModel::updateProvider,
-        onSaveBaseUrl = settingsViewModel::updateBaseUrl,
+        onSelectProvider = settingsViewModel::onSelectProvider,
+        onEnable = settingsViewModel::onEnable,
+        onThresholdChange = settingsViewModel::onThresholdChange,
         onSaveResume = resumeViewModel::save
     )
 }
 
 @Composable
 fun ProfileScreen(
-    settings: AppSettings,
+    settingsUi: SettingsUiState,
     profile: ResumeProfile,
     pdfText: String?,
     pdfLoading: Boolean,
     onPickPdf: () -> Unit,
     onPdfConsumed: () -> Unit,
-    onSaveApiKey: (String) -> Unit,
-    onSaveModel: (String) -> Unit,
-    onThresholdChange: (Int) -> Unit,
     onSelectProvider: (AiProvider) -> Unit,
-    onSaveBaseUrl: (String) -> Unit,
+    onEnable: (String, String, String) -> Unit,
+    onThresholdChange: (Int) -> Unit,
     onSaveResume: (String, String, String) -> Unit
 ) {
     Column(
@@ -107,30 +103,16 @@ fun ProfileScreen(
 
         val resumeSubtitle = if (profile.targetRole.isBlank()) "未设置" else profile.targetRole
         ExpandableCard(title = "我的简历", subtitle = resumeSubtitle) {
-            ResumeContent(
-                profile = profile,
-                pdfText = pdfText,
-                pdfLoading = pdfLoading,
-                onPickPdf = onPickPdf,
-                onPdfConsumed = onPdfConsumed,
-                onSave = onSaveResume
-            )
+            ResumeContent(profile, pdfText, pdfLoading, onPickPdf, onPdfConsumed, onSaveResume)
         }
 
-        val settingsSubtitle = if (settings.isDeepSeekConfigured) "已配置" else "未配置"
-        ExpandableCard(title = "AI 设置（DeepSeek）", subtitle = settingsSubtitle) {
-            AiSettingsContent(
-                settings = settings,
-                onSaveApiKey = onSaveApiKey,
-                onSaveModel = onSaveModel,
-                onThresholdChange = onThresholdChange,
-                onSelectProvider = onSelectProvider,
-                onSaveBaseUrl = onSaveBaseUrl
-            )
+        val activeLabel = AiProvider.from(settingsUi.activeProviderId).label
+        ExpandableCard(title = "AI 设置", subtitle = "启用：$activeLabel") {
+            AiSettingsContent(settingsUi, onSelectProvider, onEnable, onThresholdChange)
         }
 
         Text(
-            "答案由 AI 生成，仅供参考，可能存在错误。API Key 仅加密存储于本机。",
+            "答案由 AI 生成，仅供参考。各服务商 Key 分别加密存储于本机。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -138,11 +120,7 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun ExpandableCard(
-    title: String,
-    subtitle: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
+private fun ExpandableCard(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
     var expanded by rememberSaveable(title) { mutableStateOf(false) }
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -151,10 +129,7 @@ private fun ExpandableCard(
         Column(Modifier.fillMaxWidth()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(16.dp)
+                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(16.dp)
             ) {
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -192,48 +167,27 @@ private fun ResumeContent(
         }
     }
 
-    OutlinedTextField(
-        value = role,
-        onValueChange = { role = it },
-        label = { Text("目标岗位（如：Android 开发）") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth()
-    )
-    OutlinedTextField(
-        value = skills,
-        onValueChange = { skills = it },
-        label = { Text("技能（逗号分隔）") },
-        modifier = Modifier.fillMaxWidth()
-    )
-    OutlinedTextField(
-        value = raw,
-        onValueChange = { raw = it },
-        label = { Text("简历文本（可手填或导入 PDF）") },
-        minLines = 3,
-        modifier = Modifier.fillMaxWidth()
-    )
+    OutlinedTextField(role, { role = it }, label = { Text("目标岗位（如：Android 开发）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(skills, { skills = it }, label = { Text("技能（逗号分隔）") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(raw, { raw = it }, label = { Text("简历文本（可手填或导入 PDF）") }, minLines = 3, modifier = Modifier.fillMaxWidth())
     Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-        OutlinedButton(onClick = onPickPdf, enabled = !pdfLoading) {
-            Text(if (pdfLoading) "解析中…" else "导入 PDF")
-        }
+        OutlinedButton(onClick = onPickPdf, enabled = !pdfLoading) { Text(if (pdfLoading) "解析中…" else "导入 PDF") }
         Button(onClick = { onSave(role, skills, raw) }) { Text("保存简历") }
     }
 }
 
 @Composable
 private fun AiSettingsContent(
-    settings: AppSettings,
-    onSaveApiKey: (String) -> Unit,
-    onSaveModel: (String) -> Unit,
-    onThresholdChange: (Int) -> Unit,
+    uiState: SettingsUiState,
     onSelectProvider: (AiProvider) -> Unit,
-    onSaveBaseUrl: (String) -> Unit
+    onEnable: (String, String, String) -> Unit,
+    onThresholdChange: (Int) -> Unit
 ) {
-    // 服务商选择
-    Text("服务商", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("服务商（✓ 为当前启用）", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Row(Modifier.horizontalScroll(rememberScrollState())) {
         AiProvider.entries.forEach { p ->
-            val selected = settings.provider == p
+            val selected = uiState.selectedProviderId == p.id
+            val active = uiState.activeProviderId == p.id
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
@@ -241,7 +195,7 @@ private fun AiSettingsContent(
                 modifier = Modifier.clickable { onSelectProvider(p) }
             ) {
                 Text(
-                    p.label,
+                    (if (active) "✓ " else "") + p.label,
                     style = MaterialTheme.typography.labelLarge,
                     color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
@@ -251,62 +205,39 @@ private fun AiSettingsContent(
         }
     }
 
-    // 接口地址：自定义可编辑，其余显示默认（只读）
-    var urlInput by remember(settings.baseUrl) { mutableStateOf(settings.baseUrl) }
-    OutlinedTextField(
-        value = urlInput,
-        onValueChange = { urlInput = it },
-        label = { Text("接口地址") },
-        singleLine = true,
-        enabled = settings.provider.isCustom,
-        modifier = Modifier.fillMaxWidth()
-    )
-    if (settings.provider.isCustom) {
-        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { onSaveBaseUrl(urlInput) }) { Text("保存地址") }
-        }
-    }
-
-    var keyInput by remember(settings.deepSeekApiKey) { mutableStateOf(settings.deepSeekApiKey) }
+    // 选中服务商的可编辑配置（切换服务商时重置）
+    val config = uiState.config
+    var url by remember(config) { mutableStateOf(config.baseUrl) }
+    var keyInput by remember(config) { mutableStateOf(config.apiKey) }
+    var model by remember(config) { mutableStateOf(config.model) }
     var keyVisible by remember { mutableStateOf(false) }
+
+    OutlinedTextField(url, { url = it }, label = { Text("接口地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(
         value = keyInput,
         onValueChange = { keyInput = it },
         label = { Text("API Key") },
         singleLine = true,
         visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-        trailingIcon = {
-            TextButton(onClick = { keyVisible = !keyVisible }) {
-                Text(if (keyVisible) "隐藏" else "显示")
-            }
-        },
+        trailingIcon = { TextButton(onClick = { keyVisible = !keyVisible }) { Text(if (keyVisible) "隐藏" else "显示") } },
         modifier = Modifier.fillMaxWidth()
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    OutlinedTextField(model, { model = it }, label = { Text("模型") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        val isActiveSelected = uiState.selectedProviderId == uiState.activeProviderId
         Text(
-            if (settings.isDeepSeekConfigured) "状态：已配置" else "状态：未配置",
+            if (isActiveSelected) "当前启用中" else "未启用",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f)
         )
-        Button(onClick = { onSaveApiKey(keyInput) }) { Text("保存 Key") }
+        Button(onClick = { onEnable(keyInput, model, url) }) {
+            Text(if (isActiveSelected) "更新并启用" else "启用模型")
+        }
     }
 
-    var modelInput by remember(settings.model) { mutableStateOf(settings.model) }
-    OutlinedTextField(
-        value = modelInput,
-        onValueChange = { modelInput = it },
-        label = { Text("模型") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth()
-    )
-    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-        Button(onClick = { onSaveModel(modelInput) }) { Text("保存模型") }
-    }
-
-    var threshold by remember(settings.relevanceThreshold) {
-        mutableFloatStateOf(settings.relevanceThreshold.toFloat())
-    }
+    var threshold by remember(uiState.relevanceThreshold) { mutableFloatStateOf(uiState.relevanceThreshold.toFloat()) }
     Text("相关性阈值：${threshold.toInt()}", style = MaterialTheme.typography.bodyMedium)
     Slider(
         value = threshold,

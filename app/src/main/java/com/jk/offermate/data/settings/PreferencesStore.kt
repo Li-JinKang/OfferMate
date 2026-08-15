@@ -3,17 +3,17 @@ package com.jk.offermate.data.settings
 import kotlinx.coroutines.flow.Flow
 
 /**
- * 非敏感偏好的响应式存储抽象（服务商、接口地址、模型名、相关性阈值等）。
- * 具体实现基于 DataStore；测试用内存实现替换。
+ * 非敏感偏好存储：当前启用的服务商、每个服务商的接口地址/模型，以及全局相关性阈值。
  */
 interface PreferencesStore {
-    val provider: Flow<String>
-    val baseUrl: Flow<String>
-    val model: Flow<String>
+    val activeProviderId: Flow<String>
     val relevanceThreshold: Flow<Int>
 
-    suspend fun setProvider(providerId: String)
-    suspend fun setBaseUrl(url: String)
-    suspend fun setModel(model: String)
+    fun model(providerId: String): Flow<String>
+    fun baseUrl(providerId: String): Flow<String>
+
+    suspend fun setActiveProvider(providerId: String)
+    suspend fun setModel(providerId: String, model: String)
+    suspend fun setBaseUrl(providerId: String, url: String)
     suspend fun setRelevanceThreshold(value: Int)
 }

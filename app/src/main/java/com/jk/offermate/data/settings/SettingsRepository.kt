@@ -1,74 +1,73 @@
 package com.jk.offermate.data.settings
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 
 /**
- * 设置仓库：聚合敏感 Key（[SecureKeyStore]）与普通偏好（[PreferencesStore]），
- * 对外暴露统一的 [AppSettings] 响应式流。组合逻辑可在 JVM 单测中用内存实现完整验证。
+ * 设置仓库：每个服务商各自独立的 Key/模型/接口地址，另有一个"当前启用"的服务商。
+ * 分析时使用启用服务商的配置；UI 可查看/编辑任一服务商配置。
  */
 interface SettingsRepository {
-    val settings: Flow<AppSettings>
+    /** 当前启用的服务商 id。 */
+    val activeProviderId: Flow<String>
 
-    suspend fun updateApiKey(key: String)
-    suspend fun updateModel(model: String)
+    /** 全局相关性阈值。 */
+    val relevanceThreshold: Flow<Int>
+
+    /** 当前启用服务商的完整配置（供分析使用）。 */
+    val activeConfig: Flow<ProviderConfig>
+
+    /** 某服务商的配置（供设置页查看/预填）。 */
+    fun config(providerId: String): Flow<ProviderConfig>
+
+    /** 启用某服务商：保存其 Key/模型/接口地址并设为当前启用。 */
+    suspend fun enableProvider(providerId: String, apiKey: String, model: String, baseUrl: String)
+
     suspend fun updateRelevanceThreshold(value: Int)
-
-    /** 切换服务商：非自定义时自动填入默认接口地址与默认模型。 */
-    suspend fun updateProvider(provider: AiProvider)
-
-    /** 自定义接口地址。 */
-    suspend fun updateBaseUrl(url: String)
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DefaultSettingsRepository(
     private val secureKeyStore: SecureKeyStore,
     private val preferencesStore: PreferencesStore
 ) : SettingsRepository {
 
-    private val apiKeyFlow = MutableStateFlow(secureKeyStore.getDeepSeekApiKey())
+    // Key 存储非响应式，用一个 bump 触发 config 重新读取。
+    private val keyBump = MutableStateFlow(0)
 
-    override val settings: Flow<AppSettings> =
+    override val activeProviderId: Flow<String> = preferencesStore.activeProviderId
+
+    override val relevanceThreshold: Flow<Int> = preferencesStore.relevanceThreshold
+
+    override fun config(providerId: String): Flow<ProviderConfig> =
         combine(
-            apiKeyFlow,
-            preferencesStore.model,
-            preferencesStore.relevanceThreshold,
-            preferencesStore.provider,
-            preferencesStore.baseUrl
-        ) { key, model, threshold, providerId, baseUrl ->
-            AppSettings(
-                deepSeekApiKey = key,
-                model = model,
-                relevanceThreshold = AppSettings.clampThreshold(threshold),
+            preferencesStore.model(providerId),
+            preferencesStore.baseUrl(providerId),
+            keyBump
+        ) { model, baseUrl, _ ->
+            ProviderConfig(
                 providerId = providerId,
+                apiKey = secureKeyStore.getApiKey(providerId),
+                model = model,
                 baseUrl = baseUrl
             )
         }
 
-    override suspend fun updateApiKey(key: String) {
-        val trimmed = key.trim()
-        secureKeyStore.setDeepSeekApiKey(trimmed)
-        apiKeyFlow.value = trimmed
-    }
+    override val activeConfig: Flow<ProviderConfig> =
+        preferencesStore.activeProviderId.flatMapLatest { id -> config(id) }
 
-    override suspend fun updateModel(model: String) {
-        preferencesStore.setModel(model)
+    override suspend fun enableProvider(providerId: String, apiKey: String, model: String, baseUrl: String) {
+        secureKeyStore.setApiKey(providerId, apiKey.trim())
+        preferencesStore.setModel(providerId, model.trim())
+        preferencesStore.setBaseUrl(providerId, baseUrl.trim())
+        preferencesStore.setActiveProvider(providerId)
+        keyBump.value += 1
     }
 
     override suspend fun updateRelevanceThreshold(value: Int) {
         preferencesStore.setRelevanceThreshold(AppSettings.clampThreshold(value))
-    }
-
-    override suspend fun updateProvider(provider: AiProvider) {
-        preferencesStore.setProvider(provider.id)
-        if (!provider.isCustom) {
-            preferencesStore.setBaseUrl(provider.baseUrl)
-            preferencesStore.setModel(provider.defaultModel)
-        }
-    }
-
-    override suspend fun updateBaseUrl(url: String) {
-        preferencesStore.setBaseUrl(url.trim())
     }
 }

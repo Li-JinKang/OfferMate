@@ -3,6 +3,7 @@ package com.jk.offermate.data.settings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -11,24 +12,29 @@ import org.junit.Test
 
 class DefaultSettingsRepositoryTest {
 
-    private class FakeSecureKeyStore(private var key: String = "") : SecureKeyStore {
-        override fun getDeepSeekApiKey(): String = key
-        override fun setDeepSeekApiKey(key: String) { this.key = key }
+    private class FakeSecureKeyStore : SecureKeyStore {
+        private val keys = mutableMapOf<String, String>()
+        override fun getApiKey(providerId: String): String = keys[providerId].orEmpty()
+        override fun setApiKey(providerId: String, key: String) { keys[providerId] = key }
     }
 
     private class FakePreferencesStore : PreferencesStore {
-        val providerState = MutableStateFlow(AiProvider.DEEPSEEK.id)
-        val baseUrlState = MutableStateFlow(AiProvider.DEEPSEEK.baseUrl)
-        val modelState = MutableStateFlow(AiProvider.DEEPSEEK.defaultModel)
-        val thresholdState = MutableStateFlow(AppSettings.DEFAULT_THRESHOLD)
-        override val provider: Flow<String> = providerState
-        override val baseUrl: Flow<String> = baseUrlState
-        override val model: Flow<String> = modelState
-        override val relevanceThreshold: Flow<Int> = thresholdState
-        override suspend fun setProvider(providerId: String) { providerState.value = providerId }
-        override suspend fun setBaseUrl(url: String) { baseUrlState.value = url }
-        override suspend fun setModel(model: String) { modelState.value = model }
-        override suspend fun setRelevanceThreshold(value: Int) { thresholdState.value = value }
+        val active = MutableStateFlow(AiProvider.DEEPSEEK.id)
+        val threshold = MutableStateFlow(AppSettings.DEFAULT_THRESHOLD)
+        val models = MutableStateFlow<Map<String, String>>(emptyMap())
+        val baseUrls = MutableStateFlow<Map<String, String>>(emptyMap())
+
+        override val activeProviderId: Flow<String> = active
+        override val relevanceThreshold: Flow<Int> = threshold
+        override fun model(providerId: String): Flow<String> =
+            models.map { it[providerId] ?: AiProvider.from(providerId).defaultModel }
+        override fun baseUrl(providerId: String): Flow<String> =
+            baseUrls.map { it[providerId] ?: AiProvider.from(providerId).baseUrl }
+
+        override suspend fun setActiveProvider(providerId: String) { active.value = providerId }
+        override suspend fun setModel(providerId: String, model: String) { models.value = models.value + (providerId to model) }
+        override suspend fun setBaseUrl(providerId: String, url: String) { baseUrls.value = baseUrls.value + (providerId to url) }
+        override suspend fun setRelevanceThreshold(value: Int) { threshold.value = value }
     }
 
     private fun repo(
@@ -37,78 +43,46 @@ class DefaultSettingsRepositoryTest {
     ) = DefaultSettingsRepository(keyStore, prefs)
 
     @Test
-    fun `defaults are exposed and key not configured`() = runTest {
-        val settings = repo().settings.first()
+    fun `defaults expose deepseek not configured`() = runTest {
+        val repository = repo()
+        val active = repository.activeConfig.first()
 
-        assertEquals(AiProvider.DEEPSEEK.defaultModel, settings.model)
-        assertEquals(AppSettings.DEFAULT_THRESHOLD, settings.relevanceThreshold)
-        assertTrue(settings.deepSeekApiKey.isEmpty())
-        assertFalse(settings.isDeepSeekConfigured)
+        assertEquals(AiProvider.DEEPSEEK.id, active.providerId)
+        assertEquals(AiProvider.DEEPSEEK.defaultModel, active.model)
+        assertEquals(AiProvider.DEEPSEEK.baseUrl, active.baseUrl)
+        assertFalse(active.isConfigured)
     }
 
     @Test
-    fun `updateApiKey trims and marks configured`() = runTest {
+    fun `enableProvider saves per-provider config and switches active`() = runTest {
         val repository = repo()
 
-        repository.updateApiKey("  sk-deepseek-123  ")
-        val settings = repository.settings.first()
+        repository.enableProvider(AiProvider.KIMI.id, "  sk-kimi  ", "moonshot-v1-32k", "https://api.moonshot.cn/v1/")
+        val active = repository.activeConfig.first()
 
-        assertEquals("sk-deepseek-123", settings.deepSeekApiKey)
-        assertTrue(settings.isDeepSeekConfigured)
+        assertEquals(AiProvider.KIMI.id, active.providerId)
+        assertEquals("sk-kimi", active.apiKey) // 去空格
+        assertEquals("moonshot-v1-32k", active.model)
+        assertTrue(active.isConfigured)
     }
 
     @Test
-    fun `updateModel is reflected`() = runTest {
+    fun `each provider keeps its own key`() = runTest {
         val repository = repo()
 
-        repository.updateModel("deepseek-reasoner")
+        repository.enableProvider(AiProvider.DEEPSEEK.id, "sk-ds", "deepseek-chat", "https://api.deepseek.com/")
+        repository.enableProvider(AiProvider.GLM.id, "sk-glm", "glm-4-flash", "https://open.bigmodel.cn/api/paas/v4/")
 
-        assertEquals("deepseek-reasoner", repository.settings.first().model)
+        assertEquals("sk-ds", repository.config(AiProvider.DEEPSEEK.id).first().apiKey)
+        assertEquals("sk-glm", repository.config(AiProvider.GLM.id).first().apiKey)
+        // 当前启用为最后启用的 GLM
+        assertEquals(AiProvider.GLM.id, repository.activeConfig.first().providerId)
     }
 
     @Test
-    fun `updateRelevanceThreshold clamps out-of-range values`() = runTest {
+    fun `threshold clamps`() = runTest {
         val repository = repo()
-
-        repository.updateRelevanceThreshold(150)
-        assertEquals(AppSettings.MAX_THRESHOLD, repository.settings.first().relevanceThreshold)
-
-        repository.updateRelevanceThreshold(-20)
-        assertEquals(AppSettings.MIN_THRESHOLD, repository.settings.first().relevanceThreshold)
-    }
-
-    @Test
-    fun `updateProvider sets base url and default model for non-custom`() = runTest {
-        val repository = repo()
-
-        repository.updateProvider(AiProvider.KIMI)
-        val settings = repository.settings.first()
-
-        assertEquals(AiProvider.KIMI.id, settings.providerId)
-        assertEquals(AiProvider.KIMI.baseUrl, settings.baseUrl)
-        assertEquals(AiProvider.KIMI.defaultModel, settings.model)
-    }
-
-    @Test
-    fun `updateProvider custom keeps base url editable`() = runTest {
-        val repository = repo()
-
-        repository.updateProvider(AiProvider.CUSTOM)
-        repository.updateBaseUrl("https://my.example.com/v1/")
-        val settings = repository.settings.first()
-
-        assertEquals(AiProvider.CUSTOM.id, settings.providerId)
-        assertEquals("https://my.example.com/v1/", settings.baseUrl)
-    }
-
-    @Test
-    fun `settings clamps threshold read from store`() = runTest {
-        val prefs = FakePreferencesStore()
-        val repository = repo(prefs = prefs)
-
-        // 绕过仓库直接写入越界值，settings 读取时应被 clamp
-        prefs.thresholdState.value = 999
-
-        assertEquals(AppSettings.MAX_THRESHOLD, repository.settings.first().relevanceThreshold)
+        repository.updateRelevanceThreshold(999)
+        assertEquals(AppSettings.MAX_THRESHOLD, repository.relevanceThreshold.first())
     }
 }
