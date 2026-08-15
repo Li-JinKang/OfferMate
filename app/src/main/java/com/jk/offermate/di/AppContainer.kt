@@ -8,7 +8,12 @@ import com.jk.offermate.data.ai.AnswerGenerator
 import com.jk.offermate.data.ai.DeepSeekClient
 import com.jk.offermate.data.ai.QuestionExtractor
 import com.jk.offermate.data.ai.RelevanceMatcher
+import com.jk.offermate.data.importer.ImportInteractor
 import com.jk.offermate.data.local.OfferMateDatabase
+import com.jk.offermate.data.reader.ContentReader
+import com.jk.offermate.data.reader.HtmlContentExtractor
+import com.jk.offermate.data.reader.OkHttpHtmlFetcher
+import com.jk.offermate.data.reader.OkHttpUrlResolver
 import com.jk.offermate.data.repository.FakePostRepository
 import com.jk.offermate.data.settings.DataStorePreferencesStore
 import com.jk.offermate.data.settings.DefaultSettingsRepository
@@ -25,6 +30,7 @@ interface AppContainer {
     val settingsRepository: SettingsRepository
     val aiClient: AiClient
     val analysisPipeline: AnalysisPipeline
+    val importInteractor: ImportInteractor
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -56,5 +62,18 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             matcher = RelevanceMatcher(aiClient),
             answerer = AnswerGenerator(aiClient)
         )
+    }
+
+    private val contentReader: ContentReader by lazy {
+        ContentReader(
+            urlResolver = OkHttpUrlResolver(),
+            htmlFetcher = OkHttpHtmlFetcher(),
+            extractor = HtmlContentExtractor(),
+            dynamicReader = null // 小红书 WebView 读取(P2.4)后续接入
+        )
+    }
+
+    override val importInteractor: ImportInteractor by lazy {
+        ImportInteractor(contentReader, analysisPipeline)
     }
 }
