@@ -21,6 +21,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.home.HomeRoute
+import com.jk.offermate.ui.profile.ProfileRoute
 
 /**
  * 应用根 UI：底部导航 + NavHost。依赖通过 [container] 向下传递（构造注入）。
@@ -60,7 +61,7 @@ fun OfferMateApp(container: AppContainer) {
         ) {
             composable(Screen.Home.route) { HomeRoute(container) }
             composable(Screen.Quiz.route) { PlaceholderScreen("题库 & 刷题") }
-            composable(Screen.Profile.route) { PlaceholderScreen("我的") }
+            composable(Screen.Profile.route) { ProfileRoute(container) }
         }
     }
 }
