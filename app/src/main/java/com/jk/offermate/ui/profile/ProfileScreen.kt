@@ -3,10 +3,8 @@ package com.jk.offermate.ui.profile
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,30 +30,39 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.jk.offermate.data.ai.ResumeProfile
 import com.jk.offermate.data.settings.AppSettings
 import com.jk.offermate.di.AppContainer
 
 @Composable
 fun ProfileRoute(container: AppContainer) {
-    val viewModel: SettingsViewModel = viewModel(
+    val settingsViewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.provideFactory(container.settingsRepository)
     )
-    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val resumeViewModel: ResumeViewModel = viewModel(
+        factory = ResumeViewModel.provideFactory(container.resumeRepository)
+    )
+    val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
+    val profile by resumeViewModel.profile.collectAsStateWithLifecycle()
 
     ProfileScreen(
         settings = settings,
-        onSaveApiKey = viewModel::updateApiKey,
-        onSaveModel = viewModel::updateModel,
-        onThresholdChange = viewModel::updateThreshold
+        profile = profile,
+        onSaveApiKey = settingsViewModel::updateApiKey,
+        onSaveModel = settingsViewModel::updateModel,
+        onThresholdChange = settingsViewModel::updateThreshold,
+        onSaveResume = resumeViewModel::save
     )
 }
 
 @Composable
 fun ProfileScreen(
     settings: AppSettings,
+    profile: ResumeProfile,
     onSaveApiKey: (String) -> Unit,
     onSaveModel: (String) -> Unit,
-    onThresholdChange: (Int) -> Unit
+    onThresholdChange: (Int) -> Unit,
+    onSaveResume: (String, String, String) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -65,6 +72,8 @@ fun ProfileScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("我的", style = MaterialTheme.typography.titleLarge)
+
+        ResumeCard(profile = profile, onSave = onSaveResume)
 
         DeepSeekSettingsCard(
             settings = settings,
@@ -82,6 +91,46 @@ fun ProfileScreen(
 }
 
 @Composable
+private fun ResumeCard(profile: ResumeProfile, onSave: (String, String, String) -> Unit) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("我的简历", style = MaterialTheme.typography.titleMedium)
+
+            var role by remember(profile.targetRole) { mutableStateOf(profile.targetRole) }
+            var skills by remember(profile.skills) { mutableStateOf(profile.skills.joinToString("，")) }
+            var raw by remember(profile.rawText) { mutableStateOf(profile.rawText) }
+
+            OutlinedTextField(
+                value = role,
+                onValueChange = { role = it },
+                label = { Text("目标岗位（如：Android 开发）") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = skills,
+                onValueChange = { skills = it },
+                label = { Text("技能（逗号分隔）") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = raw,
+                onValueChange = { raw = it },
+                label = { Text("简历文本（可选，粘贴关键内容）") },
+                minLines = 3,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { onSave(role, skills, raw) }) { Text("保存简历") }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DeepSeekSettingsCard(
     settings: AppSettings,
     onSaveApiKey: (String) -> Unit,
@@ -95,7 +144,6 @@ private fun DeepSeekSettingsCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("DeepSeek 设置（BYOK）", style = MaterialTheme.typography.titleMedium)
 
-            // API Key
             var keyInput by remember(settings.deepSeekApiKey) { mutableStateOf(settings.deepSeekApiKey) }
             var keyVisible by remember { mutableStateOf(false) }
             OutlinedTextField(
@@ -121,7 +169,6 @@ private fun DeepSeekSettingsCard(
                 Button(onClick = { onSaveApiKey(keyInput) }) { Text("保存 Key") }
             }
 
-            // 模型
             var modelInput by remember(settings.model) { mutableStateOf(settings.model) }
             OutlinedTextField(
                 value = modelInput,
@@ -134,7 +181,6 @@ private fun DeepSeekSettingsCard(
                 Button(onClick = { onSaveModel(modelInput) }) { Text("保存模型") }
             }
 
-            // 相关性阈值
             var threshold by remember(settings.relevanceThreshold) {
                 mutableFloatStateOf(settings.relevanceThreshold.toFloat())
             }

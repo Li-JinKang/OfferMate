@@ -22,11 +22,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.jk.offermate.data.ai.AnsweredQuestion
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.domain.model.Platform
 import com.jk.offermate.domain.model.Post
@@ -48,13 +53,14 @@ import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextSecondary
 import com.jk.offermate.ui.theme.XiaohongshuRed
 
-/**
- * 首页入口：从容器取 ViewModel（工厂注入 Repository），把状态与事件桥接到无状态的 [HomeScreen]。
- */
 @Composable
 fun HomeRoute(container: AppContainer) {
     val viewModel: HomeViewModel = viewModel(
-        factory = HomeViewModel.provideFactory(container.postRepository)
+        factory = HomeViewModel.provideFactory(
+            postRepository = container.postRepository,
+            importer = container.importInteractor,
+            resumeRepository = container.resumeRepository
+        )
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -63,17 +69,18 @@ fun HomeRoute(container: AppContainer) {
         onLinkChange = viewModel::onLinkChange,
         onExtract = viewModel::onExtract,
         onSelectFilter = viewModel::onSelectFilter,
-        onOpenPost = { /* TODO: 导航到题目列表 */ }
+        onPasteAnalyze = viewModel::onPasteAnalyze,
+        onOpenPost = { /* TODO: 打开历史帖子 */ }
     )
 }
 
-/** 无状态首页，便于预览与测试。 */
 @Composable
 fun HomeScreen(
     state: HomeUiState,
     onLinkChange: (String) -> Unit,
     onExtract: () -> Unit,
     onSelectFilter: (String) -> Unit,
+    onPasteAnalyze: (String) -> Unit,
     onOpenPost: (Post) -> Unit
 ) {
     LazyColumn(
@@ -91,15 +98,34 @@ fun HomeScreen(
                 onExtract = onExtract
             )
         }
-        item {
-            SourceFilterRow(
-                filters = state.filters,
-                selected = state.selectedFilter,
-                onSelect = onSelectFilter
-            )
+
+        state.message?.let { msg ->
+            item { MessageBanner(msg) }
         }
-        items(state.posts, key = { it.id }) { post ->
-            PostCard(post = post, onOpen = { onOpenPost(post) })
+
+        if (state.manualPasteVisible) {
+            item { ManualPasteCard(isExtracting = state.isExtracting, onAnalyze = onPasteAnalyze) }
+        }
+
+        if (state.results.isNotEmpty()) {
+            item {
+                Text(
+                    "为你整理了 ${state.results.size} 道相关题",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            items(state.results) { q -> ResultCard(q) }
+        } else {
+            item {
+                SourceFilterRow(
+                    filters = state.filters,
+                    selected = state.selectedFilter,
+                    onSelect = onSelectFilter
+                )
+            }
+            items(state.posts, key = { it.id }) { post ->
+                PostCard(post = post, onOpen = { onOpenPost(post) })
+            }
         }
     }
 }
@@ -144,6 +170,85 @@ private fun ImportCard(
                 ) {
                     Text(if (isExtracting) "解析中…" else "提取")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageBanner(message: String) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.primaryContainer
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        )
+    }
+}
+
+@Composable
+private fun ManualPasteCard(isExtracting: Boolean, onAnalyze: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("手动粘贴正文", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = { Text("把帖子正文粘贴到这里…") },
+                minLines = 4,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { onAnalyze(text) },
+                    enabled = text.isNotBlank() && !isExtracting
+                ) {
+                    Text(if (isExtracting) "解析中…" else "分析粘贴内容")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultCard(q: AnsweredQuestion) {
+    var revealed by remember { mutableStateOf(false) }
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (q.tags.isNotEmpty()) {
+                    Text(q.tags.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = Modifier.weight(1f))
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                PillTag("相关 ${q.relevanceScore}", BadgeMatchText, BadgeMatchBg)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(q.question, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(12.dp))
+            if (revealed) {
+                Text(q.answer, style = MaterialTheme.typography.bodyMedium)
+                if (q.keyPoints.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("要点：" + q.keyPoints.joinToString("；"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                }
+            } else {
+                OutlinedButton(onClick = { revealed = true }) { Text("显示答案") }
             }
         }
     }

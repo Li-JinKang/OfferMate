@@ -15,6 +15,8 @@ import com.jk.offermate.data.reader.HtmlContentExtractor
 import com.jk.offermate.data.reader.OkHttpHtmlFetcher
 import com.jk.offermate.data.reader.OkHttpUrlResolver
 import com.jk.offermate.data.repository.FakePostRepository
+import com.jk.offermate.data.resume.DataStoreResumeRepository
+import com.jk.offermate.data.resume.ResumeRepository
 import com.jk.offermate.data.settings.DataStorePreferencesStore
 import com.jk.offermate.data.settings.DefaultSettingsRepository
 import com.jk.offermate.data.settings.EncryptedPrefsKeyStore
@@ -31,6 +33,7 @@ interface AppContainer {
     val aiClient: AiClient
     val analysisPipeline: AnalysisPipeline
     val importInteractor: ImportInteractor
+    val resumeRepository: ResumeRepository
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -75,5 +78,9 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val importInteractor: ImportInteractor by lazy {
         ImportInteractor(contentReader, analysisPipeline)
+    }
+
+    override val resumeRepository: ResumeRepository by lazy {
+        DataStoreResumeRepository(context)
     }
 }

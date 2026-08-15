@@ -16,17 +16,17 @@ import com.jk.offermate.data.reader.ReadResult
 class ImportInteractor(
     private val contentReader: ContentReader,
     private val analysisPipeline: AnalysisPipeline
-) {
+) : Importer {
 
     /** 从链接导入：读取正文 → 分析。读取失败则回退为"需手动粘贴"。 */
-    suspend fun importFromUrl(url: String, profile: ResumeProfile): ImportResult =
+    override suspend fun importFromUrl(url: String, profile: ResumeProfile): ImportResult =
         when (val read = contentReader.read(url)) {
             is ReadResult.Success -> analyze(read.content, profile)
             is ReadResult.NeedsManualInput -> ImportResult.NeedsManualInput(read.resolvedUrl, read.reason)
         }
 
     /** 从用户手动粘贴的正文导入：直接分析。 */
-    suspend fun importFromText(text: String, profile: ResumeProfile, sourceUrl: String = ""): ImportResult {
+    override suspend fun importFromText(text: String, profile: ResumeProfile, sourceUrl: String): ImportResult {
         val content = PostContent(
             title = "",
             text = text,

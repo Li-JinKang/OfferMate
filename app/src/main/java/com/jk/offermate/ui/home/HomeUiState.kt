@@ -1,5 +1,6 @@
 package com.jk.offermate.ui.home
 
+import com.jk.offermate.data.ai.AnsweredQuestion
 import com.jk.offermate.domain.model.Post
 
 /**
@@ -10,7 +11,13 @@ data class HomeUiState(
     val isExtracting: Boolean = false,
     val filters: List<String> = listOf(ALL),
     val selectedFilter: String = ALL,
-    val posts: List<Post> = emptyList()
+    val posts: List<Post> = emptyList(),
+    /** 本次分析产出的相关题目（已作答）。 */
+    val results: List<AnsweredQuestion> = emptyList(),
+    /** 提示/错误信息。 */
+    val message: String? = null,
+    /** 是否显示"手动粘贴正文"入口（自动读取失败时）。 */
+    val manualPasteVisible: Boolean = false
 ) {
     companion object {
         const val ALL = "全部来源"

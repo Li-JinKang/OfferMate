@@ -1,0 +1,44 @@
+package com.jk.offermate.data.resume
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import com.jk.offermate.data.ai.ResumeProfile
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+private val Context.resumeDataStore: DataStore<Preferences> by preferencesDataStore(name = "offermate_resume")
+
+/**
+ * 基于 DataStore 的简历画像存储（MVP：单份简历）。
+ */
+class DataStoreResumeRepository(context: Context) : ResumeRepository {
+
+    private val dataStore = context.resumeDataStore
+
+    override val profile: Flow<ResumeProfile> = dataStore.data.map { prefs ->
+        val skillsCsv = prefs[KEY_SKILLS].orEmpty()
+        ResumeProfile(
+            targetRole = prefs[KEY_TARGET_ROLE].orEmpty(),
+            skills = ResumeRepository.parseSkills(skillsCsv),
+            rawText = prefs[KEY_RAW_TEXT].orEmpty()
+        )
+    }
+
+    override suspend fun save(targetRole: String, skillsCsv: String, rawText: String) {
+        dataStore.edit { prefs ->
+            prefs[KEY_TARGET_ROLE] = targetRole.trim()
+            prefs[KEY_SKILLS] = skillsCsv.trim()
+            prefs[KEY_RAW_TEXT] = rawText.trim()
+        }
+    }
+
+    private companion object {
+        val KEY_TARGET_ROLE = stringPreferencesKey("target_role")
+        val KEY_SKILLS = stringPreferencesKey("skills_csv")
+        val KEY_RAW_TEXT = stringPreferencesKey("raw_text")
+    }
+}
