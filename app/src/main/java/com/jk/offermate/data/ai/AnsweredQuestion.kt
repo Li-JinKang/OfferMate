@@ -24,5 +24,9 @@ data class AnsweredQuestion(
     val difficulty: Difficulty = Difficulty.UNKNOWN,
     val keyPoints: List<String> = emptyList(),
     val relevanceScore: Int = 0,
-    val relevanceReason: String = ""
+    val relevanceReason: String = "",
+    /** 题目唯一 id（落库后由 Room 提供；分析流水线阶段为空）。 */
+    val id: String = "",
+    /** 是否已刷（掌握）。 */
+    val practiced: Boolean = false
 )

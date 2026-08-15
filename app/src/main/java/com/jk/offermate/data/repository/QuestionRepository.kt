@@ -13,6 +13,9 @@ interface QuestionRepository {
 
     /** 跨所有帖子的题目（题库）。 */
     fun observeAll(): Flow<List<AnsweredQuestion>>
+
+    /** 标记某题已刷/未刷。 */
+    suspend fun setPracticed(questionId: String, practiced: Boolean)
 }
 
 class RoomQuestionRepository(private val questionDao: QuestionDao) : QuestionRepository {
@@ -21,4 +24,8 @@ class RoomQuestionRepository(private val questionDao: QuestionDao) : QuestionRep
 
     override fun observeAll(): Flow<List<AnsweredQuestion>> =
         questionDao.observeAll().map { list -> list.map(PostMappers::toAnswered) }
+
+    override suspend fun setPracticed(questionId: String, practiced: Boolean) {
+        questionDao.setPracticed(questionId, practiced)
+    }
 }

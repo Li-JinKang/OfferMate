@@ -39,7 +39,9 @@ object PostMappers {
         difficulty = Difficulty.from(entity.difficulty),
         keyPoints = splitLines(entity.keyPointsCsv),
         relevanceScore = entity.relevanceScore,
-        relevanceReason = entity.relevanceReason
+        relevanceReason = entity.relevanceReason,
+        id = entity.id,
+        practiced = entity.practiced
     )
 
     fun toQuestionEntities(postId: String, questions: List<AnsweredQuestion>): List<QuestionEntity> =

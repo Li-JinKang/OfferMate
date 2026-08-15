@@ -16,6 +16,9 @@ interface QuestionDao {
     @Query("SELECT * FROM question ORDER BY relevanceScore DESC, orderIndex")
     fun observeAll(): Flow<List<QuestionEntity>>
 
+    @Query("UPDATE question SET practiced = :practiced WHERE id = :id")
+    suspend fun setPracticed(id: String, practiced: Boolean)
+
     @Query("SELECT COUNT(*) FROM question WHERE postId = :postId")
     suspend fun countByPost(postId: String): Int
 

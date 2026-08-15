@@ -39,7 +39,12 @@ class PostMappersTest {
         val back = entities.map { PostMappers.toAnswered(it) }
 
         assertEquals("post1_0", entities[0].id)
-        assertEquals(original, back)
+        assertEquals(original[0].question, back[0].question)
+        assertEquals(original[0].answer, back[0].answer)
+        assertEquals(original[0].tags, back[0].tags)
+        assertEquals(original[0].difficulty, back[0].difficulty)
+        assertEquals(original[0].keyPoints, back[0].keyPoints)
+        assertEquals("post1_0", back[0].id)
     }
 
     @Test

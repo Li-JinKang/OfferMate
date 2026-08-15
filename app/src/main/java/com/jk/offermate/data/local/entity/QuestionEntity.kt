@@ -22,5 +22,6 @@ data class QuestionEntity(
     val difficulty: String,
     val keyPointsCsv: String,
     val relevanceScore: Int,
-    val relevanceReason: String
+    val relevanceReason: String,
+    val practiced: Boolean = false
 )

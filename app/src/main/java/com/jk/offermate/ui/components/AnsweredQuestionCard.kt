@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jk.offermate.data.ai.AnsweredQuestion
+import com.jk.offermate.ui.theme.BadgeHotBg
+import com.jk.offermate.ui.theme.BadgeHotText
 import com.jk.offermate.ui.theme.BadgeMatchBg
 import com.jk.offermate.ui.theme.BadgeMatchText
 import com.jk.offermate.ui.theme.TextSecondary
@@ -38,7 +42,8 @@ import com.jk.offermate.ui.theme.TextSecondary
 fun AnsweredQuestionCard(
     q: AnsweredQuestion,
     modifier: Modifier = Modifier,
-    borderColor: Color? = null
+    borderColor: Color? = null,
+    onTogglePracticed: (() -> Unit)? = null
 ) {
     var revealed by rememberSaveable(q.question) { mutableStateOf(false) }
     Card(
@@ -60,6 +65,17 @@ fun AnsweredQuestionCard(
                     )
                 } else {
                     Spacer(Modifier.weight(1f))
+                }
+                if (q.practiced) {
+                    Surface(shape = RoundedCornerShape(8.dp), color = BadgeHotBg) {
+                        Text(
+                            "已刷 ✓",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = BadgeHotText,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.size(6.dp))
                 }
                 Surface(shape = RoundedCornerShape(8.dp), color = BadgeMatchBg) {
                     Text(
@@ -87,6 +103,13 @@ fun AnsweredQuestionCard(
                 Text("点按收起答案", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
             } else {
                 Text("点按显示答案", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
+
+            onTogglePracticed?.let { toggle ->
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = toggle) {
+                    Text(if (q.practiced) "取消已刷" else "标记为已刷")
+                }
             }
         }
     }

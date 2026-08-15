@@ -25,6 +25,7 @@ import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.home.HomeRoute
 import com.jk.offermate.ui.profile.ProfileRoute
 import com.jk.offermate.ui.questions.QuestionsRoute
+import com.jk.offermate.ui.quiz.QuizCategoryRoute
 import com.jk.offermate.ui.quiz.QuizRoute
 
 /**
@@ -66,7 +67,21 @@ fun OfferMateApp(container: AppContainer) {
             composable(Screen.Home.route) {
                 HomeRoute(container, onOpenPost = { postId -> navController.navigate("questions/$postId") })
             }
-            composable(Screen.Quiz.route) { QuizRoute(container) }
+            composable(Screen.Quiz.route) {
+                QuizRoute(container, onOpenCategory = { name ->
+                    navController.navigate("quizCategory/${android.net.Uri.encode(name)}")
+                })
+            }
+            composable(
+                route = "quizCategory/{category}",
+                arguments = listOf(navArgument("category") { type = NavType.StringType })
+            ) { entry ->
+                QuizCategoryRoute(
+                    container = container,
+                    category = entry.arguments?.getString("category").orEmpty(),
+                    onBack = { navController.popBackStack() }
+                )
+            }
             composable(Screen.Profile.route) { ProfileRoute(container) }
             composable(
                 route = "questions/{postId}",

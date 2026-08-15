@@ -42,6 +42,11 @@ class PostStoreTest {
             byPost.value = byPost.value + (pid to ((byPost.value[pid] ?: emptyList()) + questions))
         }
         override suspend fun deleteByPost(postId: String) { byPost.value = byPost.value - postId }
+        override suspend fun setPracticed(id: String, practiced: Boolean) {
+            byPost.value = byPost.value.mapValues { (_, list) ->
+                list.map { if (it.id == id) it.copy(practiced = practiced) else it }
+            }
+        }
     }
 
     private val postDao = FakeImportedPostDao()
