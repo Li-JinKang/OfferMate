@@ -1,22 +1,22 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    // AGP 9 内置 Kotlin 支持，无需再单独 apply org.jetbrains.kotlin.android
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    // Kotlin 2.0+ 启用 Compose 需要 Compose 编译器插件
+    alias(libs.plugins.compose.compiler)
+    // Room 等注解处理器
+    alias(libs.plugins.ksp)
 }
 
 android {
     namespace 'com.jk.offermate'
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.jk.offermate"
         minSdk 26
-        targetSdk 36
+        targetSdk 35
         versionCode 1
         versionName "1.0"
 
@@ -25,14 +25,17 @@ android {
 
     buildTypes {
         release {
-            optimization {
-                enable false
-            }
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        compose true
     }
 }
 
@@ -49,12 +52,44 @@ dependencies {
     implementation libs.constraintlayout
     implementation libs.material
 
+    // Compose (P4 UI)
+    implementation platform(libs.androidx.compose.bom)
+    implementation libs.androidx.compose.ui
+    implementation libs.androidx.compose.ui.graphics
+    implementation libs.androidx.compose.ui.tooling.preview
+    implementation libs.androidx.compose.material3
+    implementation libs.androidx.activity.compose
+    implementation libs.androidx.lifecycle.viewmodel.compose
+    implementation libs.androidx.lifecycle.runtime.compose
+    implementation libs.androidx.navigation.compose
+    debugImplementation libs.androidx.compose.ui.tooling
+
     // Content reading (P2)
     implementation libs.jsoup
     implementation libs.readability4j
     implementation libs.okhttp
     implementation libs.kotlinx.coroutines.core
     implementation libs.kotlinx.serialization.json
+
+    // 本地存储 (P3)
+    implementation libs.androidx.room.runtime
+    implementation libs.androidx.room.ktx
+    ksp libs.androidx.room.compiler
+    implementation libs.androidx.datastore.preferences
+    implementation libs.androidx.security.crypto
+
+    // 后台任务 (P4)
+    implementation libs.androidx.work.runtime.ktx
+
+    // 网络 / DeepSeek (P5)
+    implementation libs.retrofit
+    implementation libs.retrofit.kotlinx.serialization
+
+    // 图片加载
+    implementation libs.coil.compose
+
+    // 简历解析（PDF）
+    implementation libs.pdfbox.android
 
     testImplementation libs.junit
     testImplementation libs.okhttp.mockwebserver

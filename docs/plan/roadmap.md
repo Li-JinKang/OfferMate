@@ -143,8 +143,9 @@
 > 刷题的具体交互机制（揭示方式、自评、复习队列）待后续单独探讨，此处先占位。
 
 ### P4.1 导航与页面骨架
-- [ ] 底部 **3 Tab**：导入（首页）/ 题库&刷题 / 我的；**设置并入"我的"**。
-- [ ] 各 Tab 的 Compose 骨架 + Navigation。
+- [x] 底部 **3 Tab**：导入（首页）/ 题库&刷题 / 我的；**设置并入"我的"**。
+- [x] 各 Tab 的 Compose 骨架 + Navigation（Scaffold + NavigationBar + NavHost）。
+- [x] 架构骨架：`AppContainer`(手动DI) + `PostRepository` 接口 + `FakePostRepository` + MVVM(`HomeViewModel`/`HomeUiState`/单向数据流) + 首页 UI（导入卡片/来源筛选/帖子卡片，贴合设计稿）。
 
 ### P4.2 导入与后台运行（重点）
 - [ ] 导入页：接收 `ACTION_SEND`(text/plain) 分享链接 + 手动粘贴链接/正文入口。
