@@ -8,3 +8,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Kotlin 编译器会话缓存
+.kotlin/
