@@ -14,13 +14,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
@@ -44,15 +45,41 @@ internal fun categoryColor(category: String?): Color {
     return CategoryPalette[idx]
 }
 
-/** 按分类名生成一个不规则圆角形状，营造"拼图碎片"感。 */
-private fun puzzleShape(seed: Int): Shape {
-    val variants = listOf(
-        RoundedCornerShape(topStart = 34.dp, topEnd = 8.dp, bottomEnd = 30.dp, bottomStart = 10.dp),
-        RoundedCornerShape(topStart = 8.dp, topEnd = 32.dp, bottomEnd = 8.dp, bottomStart = 30.dp),
-        RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp, bottomEnd = 6.dp, bottomStart = 30.dp),
-        RoundedCornerShape(topStart = 10.dp, topEnd = 28.dp, bottomEnd = 28.dp, bottomStart = 8.dp)
-    )
-    return variants[((seed % variants.size) + variants.size) % variants.size]
+/**
+ * 真正的拼图块形状：四条边各有一个凸/凹的半圆 tab，凹凸方向由 [seed] 的低 4 位决定。
+ * 主体内缩一个 tab 半径，凸起 tab 向外延伸至组件边界内，避免被裁切。
+ */
+private fun puzzleShape(seed: Int): Shape = GenericShape { size, _ ->
+    val w = size.width
+    val h = size.height
+    val r = minOf(w, h) * 0.13f
+    val l = r
+    val t = r
+    val rt = w - r
+    val bt = h - r
+    val cx = w / 2f
+    val cy = h / 2f
+    fun bit(i: Int): Boolean = (seed shr i) and 1 == 1
+    fun sweep(out: Boolean): Float = if (out) 180f else -180f
+
+    moveTo(l, t)
+    // 上边：中点凸/凹
+    lineTo(cx - r, t)
+    arcTo(Rect(cx - r, t - r, cx + r, t + r), 180f, sweep(bit(0)), false)
+    lineTo(rt, t)
+    // 右边
+    lineTo(rt, cy - r)
+    arcTo(Rect(rt - r, cy - r, rt + r, cy + r), 270f, sweep(bit(1)), false)
+    lineTo(rt, bt)
+    // 下边
+    lineTo(cx + r, bt)
+    arcTo(Rect(cx - r, bt - r, cx + r, bt + r), 0f, sweep(bit(2)), false)
+    lineTo(l, bt)
+    // 左边
+    lineTo(l, cy + r)
+    arcTo(Rect(l - r, cy - r, l + r, cy + r), 90f, sweep(bit(3)), false)
+    lineTo(l, t)
+    close()
 }
 
 private fun blobHeight(seed: Int): Dp {
