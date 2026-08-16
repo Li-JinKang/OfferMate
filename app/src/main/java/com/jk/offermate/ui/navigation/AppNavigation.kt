@@ -22,6 +22,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jk.offermate.di.AppContainer
+import com.jk.offermate.ui.followup.FollowUpRoute
 import com.jk.offermate.ui.home.HomeRoute
 import com.jk.offermate.ui.profile.ProfileRoute
 import com.jk.offermate.ui.questions.QuestionsRoute
@@ -90,6 +91,19 @@ fun OfferMateApp(container: AppContainer) {
                 QuestionsRoute(
                     container = container,
                     postId = entry.arguments?.getString("postId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onFollowUp = { questionId ->
+                        navController.navigate("followup/${android.net.Uri.encode(questionId)}")
+                    }
+                )
+            }
+            composable(
+                route = "followup/{questionId}",
+                arguments = listOf(navArgument("questionId") { type = NavType.StringType })
+            ) { entry ->
+                FollowUpRoute(
+                    container = container,
+                    questionId = entry.arguments?.getString("questionId").orEmpty(),
                     onBack = { navController.popBackStack() }
                 )
             }

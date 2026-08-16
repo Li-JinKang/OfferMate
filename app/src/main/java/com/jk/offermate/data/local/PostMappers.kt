@@ -2,6 +2,7 @@ package com.jk.offermate.data.local
 
 import com.jk.offermate.data.ai.AnsweredQuestion
 import com.jk.offermate.data.ai.Difficulty
+import com.jk.offermate.data.dedup.QuestionDeduplicator
 import com.jk.offermate.data.local.entity.ImportedPostEntity
 import com.jk.offermate.data.local.entity.QuestionEntity
 import com.jk.offermate.domain.model.ImportStatus
@@ -44,8 +45,11 @@ object PostMappers {
         practiced = entity.practiced
     )
 
+    private val deduplicator = QuestionDeduplicator()
+
     fun toQuestionEntities(postId: String, questions: List<AnsweredQuestion>): List<QuestionEntity> =
         questions.mapIndexed { index, q ->
+            val fp = deduplicator.fingerprint(q.question, q.tags)
             QuestionEntity(
                 id = "${postId}_$index",
                 postId = postId,
@@ -56,7 +60,10 @@ object PostMappers {
                 difficulty = q.difficulty.name,
                 keyPointsCsv = q.keyPoints.joinToString(SEP),
                 relevanceScore = q.relevanceScore,
-                relevanceReason = q.relevanceReason
+                relevanceReason = q.relevanceReason,
+                exactHash = fp.exactHash,
+                simhash = fp.simhash,
+                bucketKey = fp.bucketKey
             )
         }
 

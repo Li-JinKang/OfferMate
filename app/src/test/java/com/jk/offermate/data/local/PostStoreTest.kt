@@ -1,6 +1,7 @@
 package com.jk.offermate.data.local
 
 import com.jk.offermate.data.ai.AnsweredQuestion
+import com.jk.offermate.data.local.dao.FingerprintRow
 import com.jk.offermate.data.local.dao.ImportedPostDao
 import com.jk.offermate.data.local.dao.QuestionDao
 import com.jk.offermate.data.local.entity.ImportedPostEntity
@@ -36,7 +37,20 @@ class PostStoreTest {
         val byPost = MutableStateFlow<Map<String, List<QuestionEntity>>>(emptyMap())
         override fun observeByPost(postId: String): Flow<List<QuestionEntity>> = byPost.map { it[postId] ?: emptyList() }
         override fun observeAll(): Flow<List<QuestionEntity>> = byPost.map { it.values.flatten() }
+        override fun observeById(id: String): Flow<QuestionEntity?> =
+            byPost.map { m -> m.values.flatten().firstOrNull { it.id == id } }
+        override suspend fun updateAnswer(id: String, answer: String) {
+            byPost.value = byPost.value.mapValues { (_, list) ->
+                list.map { if (it.id == id) it.copy(answer = answer) else it }
+            }
+        }
         override suspend fun countByPost(postId: String): Int = byPost.value[postId]?.size ?: 0
+        override suspend fun fingerprintsInBuckets(buckets: List<String>): List<FingerprintRow> =
+            byPost.value.values.flatten()
+                .filter { it.bucketKey in buckets }
+                .map { FingerprintRow(it.exactHash, it.simhash, it.bucketKey) }
+        override suspend fun existingExactHashes(hashes: List<String>): List<String> =
+            byPost.value.values.flatten().map { it.exactHash }.filter { it in hashes }
         override suspend fun insertAll(questions: List<QuestionEntity>) {
             val pid = questions.firstOrNull()?.postId ?: return
             byPost.value = byPost.value + (pid to ((byPost.value[pid] ?: emptyList()) + questions))
@@ -88,6 +102,43 @@ class PostStoreTest {
 
         store.markFailed("p1")
         assertEquals(ImportStatus.FAILED.name, postDao.findById("p1")!!.status)
+    }
+
+    @Test
+    fun `saveSuccess drops in-batch duplicate questions`() = runTest {
+        store.createPending("p1", "https://www.nowcoder.com/x")
+        val questions = listOf(
+            AnsweredQuestion(question = "什么是协程？", answer = "A", tags = listOf("并发"), relevanceScore = 80),
+            AnsweredQuestion(question = "什么是协程", answer = "A2", tags = listOf("并发"), relevanceScore = 60),
+            AnsweredQuestion(question = "什么是线程池", answer = "B", tags = listOf("并发"), relevanceScore = 70)
+        )
+
+        store.saveSuccess("p1", "t", "s", questions)
+
+        assertEquals(2, questionDao.countByPost("p1"))
+        assertEquals(2, postDao.findById("p1")!!.questionCount)
+    }
+
+    @Test
+    fun `saveSuccess drops cross-post duplicate against existing`() = runTest {
+        store.createPending("p1", "https://www.nowcoder.com/x")
+        store.saveSuccess(
+            "p1", "t", "s",
+            listOf(AnsweredQuestion(question = "什么是协程？", answer = "A", tags = listOf("并发")))
+        )
+
+        store.createPending("p2", "https://www.nowcoder.com/y")
+        store.saveSuccess(
+            "p2", "t2", "s2",
+            listOf(
+                AnsweredQuestion(question = "什么是协程", answer = "A2", tags = listOf("并发")), // 与 p1 重复
+                AnsweredQuestion(question = "什么是虚拟机", answer = "C", tags = listOf("JVM")) // 新题
+            )
+        )
+
+        assertEquals(1, questionDao.countByPost("p1"))
+        assertEquals(1, questionDao.countByPost("p2"))
+        assertEquals(1, postDao.findById("p2")!!.questionCount)
     }
 
     @Test

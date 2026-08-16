@@ -8,6 +8,10 @@ import com.jk.offermate.data.ai.AnswerGenerator
 import com.jk.offermate.data.ai.DeepSeekClient
 import com.jk.offermate.data.ai.QuestionExtractor
 import com.jk.offermate.data.ai.RelevanceMatcher
+import com.jk.offermate.data.ai.chat.ContextAssembler
+import com.jk.offermate.data.ai.chat.FollowUpService
+import com.jk.offermate.data.ai.chat.HeuristicTokenEstimator
+import com.jk.offermate.data.ai.chat.TokenWindowMemory
 import com.jk.offermate.data.importer.ImportInteractor
 import com.jk.offermate.data.local.OfferMateDatabase
 import com.jk.offermate.data.local.PostStore
@@ -15,7 +19,9 @@ import com.jk.offermate.data.reader.ContentReader
 import com.jk.offermate.data.reader.HtmlContentExtractor
 import com.jk.offermate.data.reader.OkHttpHtmlFetcher
 import com.jk.offermate.data.reader.OkHttpUrlResolver
+import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
+import com.jk.offermate.data.repository.RoomConversationRepository
 import com.jk.offermate.data.repository.RoomPostRepository
 import com.jk.offermate.data.repository.RoomQuestionRepository
 import com.jk.offermate.data.resume.DataStoreResumeRepository
@@ -37,11 +43,13 @@ import kotlinx.coroutines.flow.first
 interface AppContainer {
     val postRepository: PostRepository
     val questionRepository: QuestionRepository
+    val conversationRepository: ConversationRepository
     val settingsRepository: SettingsRepository
     val resumeRepository: ResumeRepository
     val resumeTextExtractor: ResumeTextExtractor
     val aiClient: AiClient
     val analysisPipeline: AnalysisPipeline
+    val followUpService: FollowUpService
     val importInteractor: ImportInteractor
     val postStore: PostStore
     val importScheduler: ImportScheduler
@@ -61,6 +69,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val questionRepository: QuestionRepository by lazy {
         RoomQuestionRepository(database.questionDao())
+    }
+
+    override val conversationRepository: ConversationRepository by lazy {
+        RoomConversationRepository(database.conversationDao())
     }
 
     override val settingsRepository: SettingsRepository by lazy {
@@ -94,6 +106,16 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             extractor = QuestionExtractor(aiClient),
             matcher = RelevanceMatcher(aiClient),
             answerer = AnswerGenerator(aiClient)
+        )
+    }
+
+    override val followUpService: FollowUpService by lazy {
+        FollowUpService(
+            aiClient = aiClient,
+            assembler = ContextAssembler(
+                // 追问历史按 token 预算裁剪，保留最近的多轮讨论
+                TokenWindowMemory(maxTokens = 3000, estimator = HeuristicTokenEstimator())
+            )
         )
     }
 

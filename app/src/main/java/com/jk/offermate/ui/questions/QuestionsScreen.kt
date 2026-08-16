@@ -27,19 +27,30 @@ import com.jk.offermate.ui.quiz.categoryColor
 import com.jk.offermate.ui.theme.TextSecondary
 
 @Composable
-fun QuestionsRoute(container: AppContainer, postId: String, onBack: () -> Unit) {
+fun QuestionsRoute(
+    container: AppContainer,
+    postId: String,
+    onBack: () -> Unit,
+    onFollowUp: (String) -> Unit = {}
+) {
     val viewModel: QuestionsViewModel = viewModel(
         factory = QuestionsViewModel.provideFactory(container.questionRepository, postId)
     )
     val questions by viewModel.questions.collectAsStateWithLifecycle()
-    QuestionsScreen(questions = questions, onBack = onBack, onTogglePracticed = viewModel::togglePracticed)
+    QuestionsScreen(
+        questions = questions,
+        onBack = onBack,
+        onTogglePracticed = viewModel::togglePracticed,
+        onFollowUp = onFollowUp
+    )
 }
 
 @Composable
 fun QuestionsScreen(
     questions: List<AnsweredQuestion>,
     onBack: () -> Unit,
-    onTogglePracticed: (AnsweredQuestion) -> Unit
+    onTogglePracticed: (AnsweredQuestion) -> Unit,
+    onFollowUp: (String) -> Unit = {}
 ) {
     Column(
         Modifier
@@ -66,7 +77,8 @@ fun QuestionsScreen(
                     AnsweredQuestionCard(
                         q = q,
                         borderColor = categoryColor(q.tags.firstOrNull()),
-                        onTogglePracticed = { onTogglePracticed(q) }
+                        onTogglePracticed = { onTogglePracticed(q) },
+                        onFollowUp = q.id.takeIf { it.isNotBlank() }?.let { id -> { onFollowUp(id) } }
                     )
                 }
             }

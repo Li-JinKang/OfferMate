@@ -14,8 +14,14 @@ interface QuestionRepository {
     /** 跨所有帖子的题目（题库）。 */
     fun observeAll(): Flow<List<AnsweredQuestion>>
 
+    /** 观察单道题（追问页用，答案更新后自动反映）。 */
+    fun observeById(questionId: String): Flow<AnsweredQuestion?>
+
     /** 标记某题已刷/未刷。 */
     suspend fun setPracticed(questionId: String, practiced: Boolean)
+
+    /** 更新某题的答案（追问后据讨论重写答案）。 */
+    suspend fun updateAnswer(questionId: String, answer: String)
 }
 
 class RoomQuestionRepository(private val questionDao: QuestionDao) : QuestionRepository {
@@ -25,7 +31,14 @@ class RoomQuestionRepository(private val questionDao: QuestionDao) : QuestionRep
     override fun observeAll(): Flow<List<AnsweredQuestion>> =
         questionDao.observeAll().map { list -> list.map(PostMappers::toAnswered) }
 
+    override fun observeById(questionId: String): Flow<AnsweredQuestion?> =
+        questionDao.observeById(questionId).map { it?.let(PostMappers::toAnswered) }
+
     override suspend fun setPracticed(questionId: String, practiced: Boolean) {
         questionDao.setPracticed(questionId, practiced)
+    }
+
+    override suspend fun updateAnswer(questionId: String, answer: String) {
+        questionDao.updateAnswer(questionId, answer)
     }
 }

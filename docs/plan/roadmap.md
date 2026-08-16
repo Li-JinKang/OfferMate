@@ -210,14 +210,25 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 - 增量：仅在"分析落库"时对本批新题去重（对已有同分区做有限比对），不做全量重扫。
 - 阈值命中则合并（保留相关性更高者/记录来源计数），不重复入库。
 
-落地时新增：`QuestionEntity.fingerprint`、去重服务 `QuestionDeduplicator`（纯逻辑，可 JVM 单测：规范化、SimHash、汉明距离、分桶）。
+**已完成 ✅**（首版）：
+- `QuestionDeduplicator`（纯逻辑，JVM 单测）：`normalize`(NFKC 全半角统一+小写+去标点空白)、64 位 `simhash`(字符 bigram 加权)、`hamming`、`bucketKey`(按首个考点标签分桶)、`isDuplicate`(精确相等 或 同桶且汉明距离≤阈值3)。
+- `QuestionEntity` 增列 `exactHash` / `simhash` / `bucketKey`（+ 索引），DB 版本 5→6。
+- 落库去重接入 `PostStore.saveSuccess`：**增量**丢弃与本批已保留题、及同分桶/精确指纹已入库题重复的新题（`QuestionDao.fingerprintsInBuckets` + `existingExactHashes`，不扫全表），`questionCount` 按去重后计。
+- 单测：`QuestionDeduplicatorTest`（规范化/simhash/汉明/分桶/阈值门控）、`PostStoreTest`（本批内去重、跨帖子去重）。
+
+**后续可增强**：命中时"保留相关性更高者/记录来源计数"合并（当前为跳过入库）、无标签桶的 LSH 分带、端侧 embedding 语义去重。
 
 
 ---
 
 ## 待办 · 后续功能（用户规划）
 
-1. **题目追问页**：提供页面对某道题向 AI 发起提问，根据 AI 回答**更新该题答案**（依赖会话层，见 memory.md 的追问会话）。
+1. ~~**题目追问页**：提供页面对某道题向 AI 发起提问，根据 AI 回答**更新该题答案**（依赖会话层，见 memory.md 的追问会话）。~~ ✅ 已完成
+   - 会话层（测试先行）：`data/ai/chat` 下 `TokenEstimator`/`HeuristicTokenEstimator`、`ChatMemory`(`MessageWindowMemory`/`TokenWindowMemory`)、`ContextAssembler`、`FollowUpService`(追问/`reviseAnswer` 重写答案)。
+   - 持久化：Room `Conversation`/`ChatMessage` 实体 + `ConversationDao` + `ConversationRepository`（每题一会话），DB 版本 4→5。
+   - `QuestionRepository` 扩展 `observeById`/`updateAnswer`。
+   - UI：`FollowUpScreen`/`FollowUpViewModel`（聊天气泡 + 输入 + “用本轮讨论更新答案”），题目卡片“追问”入口，导航 `followup/{questionId}`。
+   - 单测：TokenEstimator/ChatMemory/ContextAssembler/FollowUpService/ConversationRepository 全绿。
 2. **答案分点 + Markdown**：`AnswerGenerator` 产出**分点**答案；题目卡片答案用 **Markdown 渲染**（候选：compose-richtext / Markwon / 自研轻量渲染）。
 3. **需调研后落地**（统一调研，关联 memory.md）：
    - AI 记忆机制（三层记忆、语义事实、方向切换）。
