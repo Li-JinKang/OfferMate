@@ -81,7 +81,7 @@ fun AnsweredQuestionCard(
 
             if (revealed) {
                 Spacer(Modifier.height(12.dp))
-                Text(q.answer, style = MaterialTheme.typography.bodyMedium)
+                MarkdownText(q.answer, modifier = Modifier.fillMaxWidth())
                 if (q.keyPoints.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     Text(

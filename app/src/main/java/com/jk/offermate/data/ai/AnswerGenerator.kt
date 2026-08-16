@@ -30,6 +30,8 @@ class AnswerGenerator(private val aiClient: AiClient) {
                     1. 仅输出 JSON，不要输出任何解释或额外文字。
                     2. 结构为：{"answers":[{"index":题目序号,"answer":"参考答案","difficulty":"easy|medium|hard","keyPoints":["要点"]}]}。
                     3. index 必须与输入题目的序号一一对应。
+                    4. answer 字段使用 **Markdown** 且**分点作答**：用有序列表(1. 2. 3.)或无序列表(- )组织要点，
+                       关键术语用 **加粗**，代码/类名用 `反引号`。保持条理清晰、简明扼要。
                 """.trimIndent()
             ),
             ChatMessage(
