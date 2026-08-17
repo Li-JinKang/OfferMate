@@ -336,9 +336,15 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 - 首个工具：`ResumeReaderTool`（按需读简历，可 query 过滤；`resumeTextProvider` 注入解耦）。
 - 单测：`ToolCallingAgentTest`（工具轮/未知工具/步数上限）、`ResumeReaderToolTest`、`DeepSeekToolCallingTest`（tools 请求 + tool_calls/final 解析 + tool 结果序列化）。
 
+### 已完成 ✅（首个消费方接入：追问）
+- `FollowUpService` 接入工具轮：注入 `ToolCallingLlm?` + `ToolRegistry`，有工具时用 `ToolCallingAgent` 驱动，system 提示可用 `read_resume`，模型按需拉取简历；无 function-calling 的 provider 回退 `aiClient.chat` 旧路径。
+- `AppContainer` 装配：`toolCallingLlm = aiClient as? ToolCallingLlm`，`ToolRegistry(ResumeReaderTool{ resumeRepository.profile.rawText })`。
+- 顺带修复：简历改版后 `targetRole/skills` 常为空，追问改由 `read_resume` 取简历，画像不再缺失。
+- 单测：`FollowUpServiceTest` 新增"启用工具轮时 reply 调用 read_resume 并回填结果"。
+
 ### 待办清单
-- [ ] **接入消费方**：把相关性/作答（或先接追问 `FollowUpService`）改为"首屏最小画像 + `read_resume` 按需拉取"，用 `ToolCallingAgent` 驱动；对不支持 function-calling 的 provider 回退旧路径。
-- [ ] `AppContainer` 装配 `ToolRegistry`/`ToolCallingAgent`（resume 工具接 `ResumeRepository`）。
+- [ ] 相关性/作答步骤同样接入"最小画像 + `read_resume`"（当前仍全量注入 rawText）。
+- [ ] 更多工具（`recall_memory` 接 P3.5 记忆、`list_categories` 等）与 Skills 打包。
 - [ ] `McpClient` + 配置项（用户可增删 MCP server）+ tool 映射。
 - [ ] Skills 打包机制（模板 + 工具集）与在流水线中的挂载。
 - [ ] `DeepSeekClient` 等实现工具轮的真实请求/解析（P5，真机/真实 Key 验证）。

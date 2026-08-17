@@ -2,8 +2,13 @@ package com.jk.offermate.agent.chat
 
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.FakeAiClient
+import com.jk.offermate.agent.FakeToolCallingLlm
+import com.jk.offermate.agent.LlmTurn
 import com.jk.offermate.agent.ResumeProfile
+import com.jk.offermate.agent.ResumeReaderTool
 import com.jk.offermate.agent.Role
+import com.jk.offermate.agent.ToolCall
+import com.jk.offermate.agent.ToolRegistry
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,6 +30,31 @@ class FollowUpServiceTest {
 
     private fun service(fake: FakeAiClient) =
         FollowUpService(fake, ContextAssembler(MessageWindowMemory(20)))
+
+    @Test
+    fun `reply uses read_resume tool when tool calling enabled`() = runTest {
+        val llm = FakeToolCallingLlm(
+            listOf(
+                LlmTurn.ToolInvocations(listOf(ToolCall("c1", "read_resume", """{"query":"Kotlin"}"""))),
+                LlmTurn.Final("结合简历后的回答")
+            )
+        )
+        val tool = ResumeReaderTool(resumeTextProvider = { "技能：Kotlin、协程\n项目：IM App" })
+        val service = FollowUpService(
+            aiClient = FakeAiClient.returning("不应走到普通补全"),
+            assembler = ContextAssembler(MessageWindowMemory(20)),
+            toolCallingLlm = llm,
+            toolRegistry = ToolRegistry(listOf(tool))
+        )
+
+        val out = service.reply(context, profile, listOf(ChatMessage(Role.USER, "结合我的经历怎么答？")))
+
+        assertEquals("结合简历后的回答", out)
+        // system 提示可用 read_resume
+        assertTrue(llm.received.first().first.first().content.contains("read_resume"))
+        // 第二轮带回 TOOL 结果（简历内容）
+        assertTrue(llm.received[1].first.any { it.role == Role.TOOL && it.content.contains("Kotlin") })
+    }
 
     @Test
     fun `reply injects question current answer and profile into system context`() = runTest {

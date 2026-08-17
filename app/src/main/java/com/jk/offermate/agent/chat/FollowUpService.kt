@@ -3,6 +3,9 @@ package com.jk.offermate.agent.chat
 import com.jk.offermate.agent.AiClient
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.ResumeProfile
+import com.jk.offermate.agent.ToolCallingAgent
+import com.jk.offermate.agent.ToolCallingLlm
+import com.jk.offermate.agent.ToolRegistry
 
 /** 一道题的追问上下文。 */
 data class QuestionContext(
@@ -19,10 +22,17 @@ data class QuestionContext(
  */
 class FollowUpService(
     private val aiClient: AiClient,
-    private val assembler: ContextAssembler
+    private val assembler: ContextAssembler,
+    private val toolCallingLlm: ToolCallingLlm? = null,
+    private val toolRegistry: ToolRegistry = ToolRegistry(),
+    private val maxSteps: Int = 5
 ) {
 
-    /** 追问会话的 system 上下文（题目 + 当前答案 + 简历画像）。 */
+    /** 是否启用工具轮：provider 支持 function-calling 且注册了工具。 */
+    private val toolsEnabled: Boolean
+        get() = toolCallingLlm != null && !toolRegistry.isEmpty()
+
+    /** 追问会话的 system 上下文（题目 + 当前答案 + 最小画像；简历细节按需用工具拉取）。 */
     fun systemContext(context: QuestionContext, profile: ResumeProfile): String = buildString {
         append("你是一名资深面试辅导老师，正在就下面这道面试题与候选人进行**追问讨论**。\n")
         append("请结合候选人的简历画像与已有参考答案，针对其追问给出准确、有条理的解答。\n")
@@ -38,6 +48,9 @@ class FollowUpService(
         append("目标岗位：").append(profile.targetRole.ifBlank { "未填写" }).append("\n")
         if (profile.skills.isNotEmpty()) append("技能：").append(profile.skills.joinToString("、")).append("\n")
         if (profile.projects.isNotEmpty()) append("项目：").append(profile.projects.joinToString("、")).append("\n")
+        if (toolsEnabled) {
+            append("\n如需候选人简历的更多细节（技术栈、项目经历等），调用 read_resume 工具获取，可传 query 关键词。\n")
+        }
     }
 
     /** 组装本轮要发送给模型的完整消息（history 应已包含最新的用户追问）。 */
@@ -55,7 +68,7 @@ class FollowUpService(
         context: QuestionContext,
         profile: ResumeProfile,
         history: List<ChatMessage>
-    ): String = aiClient.chat(buildMessages(context, profile, history)).trim()
+    ): String = runTurn(buildMessages(context, profile, history)).trim()
 
     /**
      * 综合整段讨论，产出这道题**更新后的完整参考答案**（Markdown、分点，只含答案正文）。
@@ -69,9 +82,16 @@ class FollowUpService(
             systemContents = listOf(systemContext(context, profile), REVISE_INSTRUCTION),
             history = history
         )
-        val raw = aiClient.chat(messages).trim()
-        return stripCodeFence(raw)
+        return stripCodeFence(runTurn(messages).trim())
     }
+
+    /** 有工具则走 agent 工具轮（模型可按需 read_resume），否则退回普通补全。 */
+    private suspend fun runTurn(messages: List<ChatMessage>): String =
+        if (toolsEnabled) {
+            ToolCallingAgent(toolCallingLlm!!, toolRegistry, maxSteps).run(messages)
+        } else {
+            aiClient.chat(messages)
+        }
 
     private fun stripCodeFence(text: String): String {
         val trimmed = text.trim()

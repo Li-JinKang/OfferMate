@@ -6,6 +6,9 @@ import com.jk.offermate.agent.AiClient
 import com.jk.offermate.agent.AnalysisPipeline
 import com.jk.offermate.agent.AnswerGenerator
 import com.jk.offermate.agent.CategoryClassifier
+import com.jk.offermate.agent.ResumeReaderTool
+import com.jk.offermate.agent.ToolCallingLlm
+import com.jk.offermate.agent.ToolRegistry
 import com.jk.offermate.agent.DeepSeekClient
 import com.jk.offermate.agent.QuestionExtractor
 import com.jk.offermate.agent.RelevanceMatcher
@@ -132,6 +135,11 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             assembler = ContextAssembler(
                 // 追问历史按 token 预算裁剪，保留最近的多轮讨论
                 TokenWindowMemory(maxTokens = 3000, estimator = HeuristicTokenEstimator())
+            ),
+            // provider 支持 function-calling 时启用工具轮：首屏只带最小画像，模型按需 read_resume
+            toolCallingLlm = aiClient as? ToolCallingLlm,
+            toolRegistry = ToolRegistry(
+                listOf(ResumeReaderTool(resumeTextProvider = { resumeRepository.profile.first().rawText }))
             )
         )
     }
