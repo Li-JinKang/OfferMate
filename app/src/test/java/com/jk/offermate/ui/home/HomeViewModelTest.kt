@@ -44,28 +44,31 @@ class HomeViewModelTest {
     private class FakeResumeRepository(profile: ResumeProfile) : ResumeRepository {
         private val state = MutableStateFlow(profile)
         override val profile: Flow<ResumeProfile> = state
+        override val resumeFilePath: Flow<String?> = MutableStateFlow(null)
         override suspend fun save(targetRole: String, skillsCsv: String, rawText: String) {}
+        override suspend fun updateRawText(rawText: String) {}
+        override suspend fun setFilePath(path: String?) {}
     }
 
     private fun viewModel(
         scheduler: FakeImportScheduler = FakeImportScheduler(),
-        targetRole: String = "Android 开发"
+        resumeText: String = "我的简历内容"
     ) = HomeViewModel(
         postRepository = FakePostRepository(),
         importScheduler = scheduler,
-        resumeRepository = FakeResumeRepository(ResumeProfile(targetRole = targetRole))
+        resumeRepository = FakeResumeRepository(ResumeProfile(targetRole = "", rawText = resumeText))
     )
 
     @Test
     fun `extract without resume shows hint and does not enqueue`() {
         val scheduler = FakeImportScheduler()
-        val vm = viewModel(scheduler, targetRole = "")
+        val vm = viewModel(scheduler, resumeText = "")
         vm.onLinkChange("https://www.nowcoder.com/x")
 
         vm.onExtract()
 
         assertTrue(scheduler.urls.isEmpty())
-        assertTrue(vm.uiState.value.message!!.contains("目标岗位"))
+        assertTrue(vm.uiState.value.message!!.contains("简历"))
     }
 
     @Test

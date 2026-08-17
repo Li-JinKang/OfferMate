@@ -38,11 +38,11 @@ class AnalyzePostWorker(
         return try {
             store.markStatus(id, ImportStatus.ANALYZING)
             val profile = container.resumeRepository.profile.first()
-            Log.d(TAG, "profile targetRole='${profile.targetRole}' skills=${profile.skills.size}")
-            if (profile.targetRole.isBlank()) {
-                Log.w(TAG, "no resume profile -> abort")
+            Log.d(TAG, "profile rawTextLen=${profile.rawText.length} skills=${profile.skills.size}")
+            if (profile.rawText.isBlank()) {
+                Log.w(TAG, "no resume -> abort")
                 store.markFailed(id)
-                notifier.notifyDone("分析未开始", "请先在\"我的\"里填写目标岗位/简历")
+                notifier.notifyDone("分析未开始", "请先在\"我的\"里上传简历")
                 return Result.success()
             }
 

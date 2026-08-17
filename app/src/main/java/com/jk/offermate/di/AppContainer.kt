@@ -20,13 +20,16 @@ import com.jk.offermate.data.reader.HtmlContentExtractor
 import com.jk.offermate.data.reader.OkHttpHtmlFetcher
 import com.jk.offermate.data.reader.OkHttpUrlResolver
 import com.jk.offermate.data.reader.WebViewContentReader
+import com.jk.offermate.data.repository.CategoryRepository
 import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
+import com.jk.offermate.data.repository.RoomCategoryRepository
 import com.jk.offermate.data.repository.RoomConversationRepository
 import com.jk.offermate.data.repository.RoomPostRepository
 import com.jk.offermate.data.repository.RoomQuestionRepository
 import com.jk.offermate.data.resume.DataStoreResumeRepository
 import com.jk.offermate.data.resume.PdfBoxResumeTextExtractor
+import com.jk.offermate.data.resume.ResumeFileStore
 import com.jk.offermate.data.resume.ResumeRepository
 import com.jk.offermate.data.resume.ResumeTextExtractor
 import com.jk.offermate.data.settings.DataStorePreferencesStore
@@ -44,10 +47,12 @@ import kotlinx.coroutines.flow.first
 interface AppContainer {
     val postRepository: PostRepository
     val questionRepository: QuestionRepository
+    val categoryRepository: CategoryRepository
     val conversationRepository: ConversationRepository
     val settingsRepository: SettingsRepository
     val resumeRepository: ResumeRepository
     val resumeTextExtractor: ResumeTextExtractor
+    val resumeFileStore: ResumeFileStore
     val aiClient: AiClient
     val analysisPipeline: AnalysisPipeline
     val followUpService: FollowUpService
@@ -72,6 +77,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         RoomQuestionRepository(database.questionDao())
     }
 
+    override val categoryRepository: CategoryRepository by lazy {
+        RoomCategoryRepository(database.categoryDao())
+    }
+
     override val conversationRepository: ConversationRepository by lazy {
         RoomConversationRepository(database.conversationDao())
     }
@@ -89,6 +98,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val resumeTextExtractor: ResumeTextExtractor by lazy {
         PdfBoxResumeTextExtractor(context)
+    }
+
+    override val resumeFileStore: ResumeFileStore by lazy {
+        ResumeFileStore(context)
     }
 
     // BYOK：运行时从设置读取 Key 与模型名

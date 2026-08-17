@@ -2,6 +2,7 @@ package com.jk.offermate.data.local
 
 import com.jk.offermate.data.ai.AnsweredQuestion
 import com.jk.offermate.data.ai.Difficulty
+import com.jk.offermate.data.ai.QuestionSource
 import com.jk.offermate.data.dedup.QuestionDeduplicator
 import com.jk.offermate.data.local.entity.ImportedPostEntity
 import com.jk.offermate.data.local.entity.QuestionEntity
@@ -42,7 +43,8 @@ object PostMappers {
         relevanceScore = entity.relevanceScore,
         relevanceReason = entity.relevanceReason,
         id = entity.id,
-        practiced = entity.practiced
+        practiced = entity.practiced,
+        source = QuestionSource.from(entity.source)
     )
 
     private val deduplicator = QuestionDeduplicator()

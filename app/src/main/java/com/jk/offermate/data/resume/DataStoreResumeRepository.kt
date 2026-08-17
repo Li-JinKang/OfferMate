@@ -28,6 +28,10 @@ class DataStoreResumeRepository(context: Context) : ResumeRepository {
         )
     }
 
+    override val resumeFilePath: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[KEY_FILE_PATH]?.takeIf { it.isNotBlank() }
+    }
+
     override suspend fun save(targetRole: String, skillsCsv: String, rawText: String) {
         dataStore.edit { prefs ->
             prefs[KEY_TARGET_ROLE] = targetRole.trim()
@@ -36,9 +40,20 @@ class DataStoreResumeRepository(context: Context) : ResumeRepository {
         }
     }
 
+    override suspend fun updateRawText(rawText: String) {
+        dataStore.edit { prefs -> prefs[KEY_RAW_TEXT] = rawText.trim() }
+    }
+
+    override suspend fun setFilePath(path: String?) {
+        dataStore.edit { prefs ->
+            if (path.isNullOrBlank()) prefs.remove(KEY_FILE_PATH) else prefs[KEY_FILE_PATH] = path
+        }
+    }
+
     private companion object {
         val KEY_TARGET_ROLE = stringPreferencesKey("target_role")
         val KEY_SKILLS = stringPreferencesKey("skills_csv")
         val KEY_RAW_TEXT = stringPreferencesKey("raw_text")
+        val KEY_FILE_PATH = stringPreferencesKey("resume_file_path")
     }
 }

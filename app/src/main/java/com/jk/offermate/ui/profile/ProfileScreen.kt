@@ -42,11 +42,17 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.Bitmap
 import com.jk.offermate.data.ai.ResumeProfile
+import com.jk.offermate.data.resume.PdfPageRenderer
 import com.jk.offermate.data.settings.AiProvider
 import com.jk.offermate.data.settings.AppSettings
 import com.jk.offermate.di.AppContainer
+import com.jk.offermate.ui.components.ZoomableImage
 import com.jk.offermate.ui.theme.OutlineSoft
+import com.jk.offermate.ui.theme.TextSecondary
 
 @Composable
 fun ProfileRoute(container: AppContainer) {
@@ -54,12 +60,17 @@ fun ProfileRoute(container: AppContainer) {
         factory = SettingsViewModel.provideFactory(container.settingsRepository)
     )
     val resumeViewModel: ResumeViewModel = viewModel(
-        factory = ResumeViewModel.provideFactory(container.resumeRepository, container.resumeTextExtractor)
+        factory = ResumeViewModel.provideFactory(
+            container.resumeRepository,
+            container.resumeTextExtractor,
+            container.resumeFileStore
+        )
     )
     val settingsUi by settingsViewModel.uiState.collectAsStateWithLifecycle()
     val profile by resumeViewModel.profile.collectAsStateWithLifecycle()
-    val pdfText by resumeViewModel.pdfText.collectAsStateWithLifecycle()
-    val pdfLoading by resumeViewModel.pdfLoading.collectAsStateWithLifecycle()
+    val resumeFilePath by resumeViewModel.resumeFilePath.collectAsStateWithLifecycle()
+    val resumeLoading by resumeViewModel.loading.collectAsStateWithLifecycle()
+    val resumeError by resumeViewModel.error.collectAsStateWithLifecycle()
 
     val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(resumeViewModel::onPdfPicked)
@@ -68,14 +79,15 @@ fun ProfileRoute(container: AppContainer) {
     ProfileScreen(
         settingsUi = settingsUi,
         profile = profile,
-        pdfText = pdfText,
-        pdfLoading = pdfLoading,
+        resumeFilePath = resumeFilePath,
+        resumeLoading = resumeLoading,
+        resumeError = resumeError,
         onPickPdf = { pdfLauncher.launch(arrayOf("application/pdf")) },
-        onPdfConsumed = resumeViewModel::consumePdfText,
+        onSaveRawText = resumeViewModel::saveRawText,
+        onConsumeError = resumeViewModel::consumeError,
         onSelectProvider = settingsViewModel::onSelectProvider,
         onEnable = settingsViewModel::onEnable,
-        onThresholdChange = settingsViewModel::onThresholdChange,
-        onSaveResume = resumeViewModel::save
+        onThresholdChange = settingsViewModel::onThresholdChange
     )
 }
 
@@ -83,14 +95,15 @@ fun ProfileRoute(container: AppContainer) {
 fun ProfileScreen(
     settingsUi: SettingsUiState,
     profile: ResumeProfile,
-    pdfText: String?,
-    pdfLoading: Boolean,
+    resumeFilePath: String?,
+    resumeLoading: Boolean,
+    resumeError: String?,
     onPickPdf: () -> Unit,
-    onPdfConsumed: () -> Unit,
+    onSaveRawText: (String) -> Unit,
+    onConsumeError: () -> Unit,
     onSelectProvider: (AiProvider) -> Unit,
     onEnable: (String, String, String) -> Unit,
-    onThresholdChange: (Int) -> Unit,
-    onSaveResume: (String, String, String) -> Unit
+    onThresholdChange: (Int) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -101,9 +114,9 @@ fun ProfileScreen(
     ) {
         Text("我的", style = MaterialTheme.typography.titleLarge)
 
-        val resumeSubtitle = if (profile.targetRole.isBlank()) "未设置" else profile.targetRole
+        val resumeSubtitle = if (profile.rawText.isBlank()) "未上传" else "已上传"
         ExpandableCard(title = "我的简历", subtitle = resumeSubtitle) {
-            ResumeContent(profile, pdfText, pdfLoading, onPickPdf, onPdfConsumed, onSaveResume)
+            ResumeContent(profile, resumeFilePath, resumeLoading, resumeError, onPickPdf, onSaveRawText, onConsumeError)
         }
 
         val activeLabel = AiProvider.from(settingsUi.activeProviderId).label
@@ -149,30 +162,84 @@ private fun ExpandableCard(title: String, subtitle: String, content: @Composable
 @Composable
 private fun ResumeContent(
     profile: ResumeProfile,
-    pdfText: String?,
-    pdfLoading: Boolean,
+    resumeFilePath: String?,
+    loading: Boolean,
+    error: String?,
     onPickPdf: () -> Unit,
-    onPdfConsumed: () -> Unit,
-    onSave: (String, String, String) -> Unit
+    onSaveRawText: (String) -> Unit,
+    onConsumeError: () -> Unit
 ) {
-    var role by remember(profile.targetRole) { mutableStateOf(profile.targetRole) }
-    var skills by remember(profile.skills) { mutableStateOf(profile.skills.joinToString("，")) }
-    var raw by remember(profile.rawText) { mutableStateOf(profile.rawText) }
-
-    LaunchedEffect(pdfText) {
-        val t = pdfText
-        if (!t.isNullOrBlank()) {
-            raw = t
-            onPdfConsumed()
+    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            if (resumeFilePath == null) "上传 PDF 简历，App 会自动识别内容" else "简历已上传",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedButton(onClick = onPickPdf, enabled = !loading) {
+            Text(if (loading) "解析中…" else if (resumeFilePath == null) "导入 PDF" else "重新导入")
         }
     }
 
-    OutlinedTextField(role, { role = it }, label = { Text("目标岗位（如：Android 开发）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(skills, { skills = it }, label = { Text("技能（逗号分隔）") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(raw, { raw = it }, label = { Text("简历文本（可手填或导入 PDF）") }, minLines = 3, modifier = Modifier.fillMaxWidth())
-    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-        OutlinedButton(onClick = onPickPdf, enabled = !pdfLoading) { Text(if (pdfLoading) "解析中…" else "导入 PDF") }
-        Button(onClick = { onSave(role, skills, raw) }) { Text("保存简历") }
+    error?.let {
+        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        LaunchedEffect(it) {
+            kotlinx.coroutines.delay(4000)
+            onConsumeError()
+        }
+    }
+
+    // 简历预览（PDF 渲染为图片，可缩放）
+    if (resumeFilePath != null) {
+        ResumePreview(resumeFilePath)
+    }
+
+    // 识别出的内容（可折叠、可编辑）
+    if (profile.rawText.isNotBlank()) {
+        RecognizedTextSection(profile.rawText, onSaveRawText)
+    }
+}
+
+@Composable
+private fun ResumePreview(path: String) {
+    val bitmaps by produceState(initialValue = emptyList<Bitmap>(), path) {
+        value = PdfPageRenderer.render(path)
+    }
+    if (bitmaps.isEmpty()) {
+        Text("预览加载中…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+        return
+    }
+    Text("简历预览（双指缩放）", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        bitmaps.forEach { bmp ->
+            ZoomableImage(image = bmp.asImageBitmap())
+        }
+    }
+}
+
+@Composable
+private fun RecognizedTextSection(rawText: String, onSave: (String) -> Unit) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    var edited by remember(rawText) { mutableStateOf(rawText) }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }
+    ) {
+        Text("识别出的内容", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Text(if (expanded) "收起 ▲" else "展开 ▼", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+    }
+    if (expanded) {
+        OutlinedTextField(
+            value = edited,
+            onValueChange = { edited = it },
+            label = { Text("可校正识别文本") },
+            minLines = 4,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { onSave(edited) }, enabled = edited != rawText) { Text("保存") }
+        }
     }
 }
 

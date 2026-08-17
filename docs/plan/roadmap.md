@@ -328,13 +328,16 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 4. **题库拼图增强**：
    - 更丰富的配色（扩充调色板 / 按分类稳定取色 / 渐变）。
    - 支持**拖拽排序**（自定义顺序持久化到本地）。
-5. **用户自定义分类与题目**：
-   - 分类：支持用户**手动新增/重命名/删除分类**（考点标签），不再只由 AI 抽取产生；分类持久化到本地。
-   - 题目：支持用户**手动新增题目**（题干/答案/所属分类/难度等），与 AI 抽取的题目共存；支持编辑/删除。
-   - 数据层：`Question`/分类可能需要"来源"字段区分 `AI` 与 `MANUAL`（手动题不参与相关性重算/去重误删）；分类若独立成表需新 DAO。
-   - UI：题库页提供"新增分类""新增题目"入口与编辑表单。
-6. **简历页改版（预览 + 折叠，去结构化框）**：
-   - 去掉现有"目标岗位""技能"输入框的展示形态。
-   - 上传简历后提供 **ImageView 预览**：PDF 需渲染为位图（`PdfRenderer`）显示；**支持缩放/平移**（双指缩放，可用 Zoomable 组件或自定义 `Modifier`）。
-   - 识别出的文本内容以**可折叠区块**呈现（默认折叠，展开查看 AI 解析出的画像/要点）。
-   - ⚠️ 依赖影响：当前 AI 流水线用 `ResumeProfile.targetRole`（`AnalyzePostWorker` 以 `targetRole` 是否为空作为"是否已配置简历"的门槛）与 `skills` 做相关性上下文。去掉输入框后，需改为**从简历文本 AI 抽取**目标岗位/技能（或允许可选覆盖），并调整 worker 的"已配置"判断，避免导入被误拦。此项与"P3.5 记忆/画像抽取"相关联，实现时一并考虑。
+5. ~~**用户自定义分类与题目**~~ ✅ 已完成
+   - 分类：`CategoryEntity`/`CategoryDao`/`RoomCategoryRepository`，支持手动新增/删除分类（可先建空分类）；题库总览 `QuizViewModel` 合并"标签派生分类 + 用户分类"，空分类显示 0/0。
+   - 题目：`QuestionRepository.addManualQuestion`（id=`manual_UUID`、`source=MANUAL`、relevanceScore=100 置顶），与 AI 题共存；分类页对手动题提供"删除"（`QuestionEntity.source` + `AnsweredQuestion.source` 区分 AI/MANUAL）。
+   - UI：题库页"+ 分类""+ 题目"对话框（分类可选已有 chip、难度 chip）。DB 版本 6→7。
+   - 单测：`CategoryRepositoryTest`、`QuestionRepositoryTest`。
+   - 待增强：分类重命名、手动题编辑（当前支持增/删）。
+6. ~~**简历页改版（预览 + 折叠，去结构化框）**~~ ✅ 已完成
+   - 去掉"目标岗位""技能"输入框。
+   - 上传 PDF 后：`ResumeFileStore` 复制到内部存储，`PdfPageRenderer`（系统 `PdfRenderer`）渲染为位图，`ZoomableImage`（双指缩放/平移）预览。
+   - 识别文本以**可折叠区块**呈现，可编辑并保存（`RecognizedTextSection`）。
+   - 依赖影响已处理：相关性/作答改为把 `ResumeProfile.rawText`（截断 2000 字）注入 Prompt；`AnalyzePostWorker` 与 `HomeViewModel` 的"已配置简历"判断由 `targetRole` 改为 `rawText` 非空，避免导入误拦。
+   - ⚠️ 需真机验证：PDF 渲染、缩放手势、预览 UI（本机仅编译 + 单测通过，未跑设备）。
+   - 待增强：从简历文本 AI 抽取岗位/技能画像（接 P3.5），进一步提升相关性精度。

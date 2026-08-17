@@ -36,10 +36,15 @@ class RelevanceMatcher(private val aiClient: AiClient) {
                 role = Role.USER,
                 content = buildString {
                     append("候选人简历画像：\n")
-                    append("目标岗位：${profile.targetRole}\n")
+                    if (profile.targetRole.isNotBlank()) append("目标岗位：${profile.targetRole}\n")
                     if (profile.skills.isNotEmpty()) append("技能：${profile.skills.joinToString("、")}\n")
                     profile.yearsOfExperience?.let { append("工作年限：$it 年\n") }
                     if (profile.projects.isNotEmpty()) append("项目：${profile.projects.joinToString("、")}\n")
+                    if (profile.rawText.isNotBlank()) {
+                        append("简历内容（据此判断技术栈/项目/方向）：\n")
+                        append(profile.rawText.take(RESUME_CHAR_LIMIT))
+                        append("\n")
+                    }
                     append("\n题目列表：\n")
                     append(questionsBlock)
                 }
@@ -95,5 +100,6 @@ class RelevanceMatcher(private val aiClient: AiClient) {
 
     companion object {
         const val DEFAULT_THRESHOLD = 60
+        private const val RESUME_CHAR_LIMIT = 2000
     }
 }

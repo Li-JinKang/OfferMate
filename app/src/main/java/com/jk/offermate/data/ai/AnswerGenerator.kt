@@ -38,14 +38,23 @@ class AnswerGenerator(private val aiClient: AiClient) {
                 role = Role.USER,
                 content = buildString {
                     append("候选人简历画像：\n")
-                    append("目标岗位：${profile.targetRole}\n")
+                    if (profile.targetRole.isNotBlank()) append("目标岗位：${profile.targetRole}\n")
                     if (profile.skills.isNotEmpty()) append("技能：${profile.skills.joinToString("、")}\n")
                     if (profile.projects.isNotEmpty()) append("项目：${profile.projects.joinToString("、")}\n")
+                    if (profile.rawText.isNotBlank()) {
+                        append("简历内容（可据此结合候选人经历作答）：\n")
+                        append(profile.rawText.take(RESUME_CHAR_LIMIT))
+                        append("\n")
+                    }
                     append("\n待作答题目：\n")
                     append(questionsBlock)
                 }
             )
         )
+    }
+
+    private companion object {
+        const val RESUME_CHAR_LIMIT = 2000
     }
 
     suspend fun answer(

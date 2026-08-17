@@ -29,5 +29,7 @@ data class QuestionEntity(
     /** 去重指纹（64 位 SimHash，近似重复判定）。 */
     val simhash: Long = 0L,
     /** LSH 分桶键（当前按首个考点标签分区）。 */
-    val bucketKey: String = ""
+    val bucketKey: String = "",
+    /** 来源：AI（抽取）或 MANUAL（用户手动添加）。 */
+    val source: String = "AI"
 )

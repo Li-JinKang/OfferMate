@@ -14,6 +14,16 @@ enum class Difficulty {
     }
 }
 
+/** 题目来源：AI 抽取 or 用户手动添加。 */
+enum class QuestionSource {
+    AI, MANUAL;
+
+    companion object {
+        fun from(value: String?): QuestionSource =
+            runCatching { valueOf(value.orEmpty()) }.getOrDefault(AI)
+    }
+}
+
 /**
  * 已作答的题目（分析流水线的最终产物）。
  */
@@ -28,5 +38,7 @@ data class AnsweredQuestion(
     /** 题目唯一 id（落库后由 Room 提供；分析流水线阶段为空）。 */
     val id: String = "",
     /** 是否已刷（掌握）。 */
-    val practiced: Boolean = false
+    val practiced: Boolean = false,
+    /** 来源：AI 抽取或用户手动添加。 */
+    val source: QuestionSource = QuestionSource.AI
 )

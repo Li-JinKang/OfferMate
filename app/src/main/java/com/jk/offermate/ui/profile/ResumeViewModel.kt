@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jk.offermate.data.ai.ResumeProfile
+import com.jk.offermate.data.resume.ResumeFileStore
 import com.jk.offermate.data.resume.ResumeRepository
 import com.jk.offermate.data.resume.ResumeTextExtractor
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,11 +17,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * 简历录入 ViewModel。支持手动填写与 PDF 导入解析。
+ * 简历 ViewModel：导入 PDF → 复制到本地（供预览）+ 端侧解析文本。
+ * 不再要求手填岗位/技能；相关性/作答直接以简历文本为上下文。
  */
 class ResumeViewModel(
     private val repository: ResumeRepository,
-    private val extractor: ResumeTextExtractor
+    private val extractor: ResumeTextExtractor,
+    private val fileStore: ResumeFileStore
 ) : ViewModel() {
 
     val profile: StateFlow<ResumeProfile> = repository.profile.stateIn(
@@ -29,31 +32,49 @@ class ResumeViewModel(
         initialValue = ResumeProfile(targetRole = "")
     )
 
-    private val _pdfText = MutableStateFlow<String?>(null)
-    val pdfText: StateFlow<String?> = _pdfText.asStateFlow()
+    val resumeFilePath: StateFlow<String?> = repository.resumeFilePath.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = null
+    )
 
-    private val _pdfLoading = MutableStateFlow(false)
-    val pdfLoading: StateFlow<Boolean> = _pdfLoading.asStateFlow()
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
-    fun save(targetRole: String, skillsCsv: String, rawText: String) {
-        viewModelScope.launch { repository.save(targetRole, skillsCsv, rawText) }
-    }
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
 
     fun onPdfPicked(uri: Uri) {
         viewModelScope.launch {
-            _pdfLoading.value = true
-            _pdfText.value = runCatching { extractor.extractText(uri) }.getOrDefault("")
-            _pdfLoading.value = false
+            _loading.value = true
+            _error.value = null
+            try {
+                val path = fileStore.copyToInternal(uri)
+                repository.setFilePath(path)
+                val text = extractor.extractText(uri)
+                repository.updateRawText(text)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "简历解析失败，请重试"
+            } finally {
+                _loading.value = false
+            }
         }
     }
 
-    fun consumePdfText() {
-        _pdfText.value = null
+    /** 用户编辑识别文本后手动保存。 */
+    fun saveRawText(text: String) {
+        viewModelScope.launch { repository.updateRawText(text) }
     }
 
+    fun consumeError() { _error.value = null }
+
     companion object {
-        fun provideFactory(repository: ResumeRepository, extractor: ResumeTextExtractor) = viewModelFactory {
-            initializer { ResumeViewModel(repository, extractor) }
+        fun provideFactory(
+            repository: ResumeRepository,
+            extractor: ResumeTextExtractor,
+            fileStore: ResumeFileStore
+        ) = viewModelFactory {
+            initializer { ResumeViewModel(repository, extractor, fileStore) }
         }
     }
 }

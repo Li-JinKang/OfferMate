@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.data.ai.AnsweredQuestion
+import com.jk.offermate.data.ai.QuestionSource
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.AnsweredQuestionCard
 import com.jk.offermate.ui.theme.TextSecondary
@@ -31,7 +32,7 @@ fun QuizCategoryRoute(container: AppContainer, category: String, onBack: () -> U
         factory = QuizCategoryViewModel.provideFactory(container.questionRepository, category)
     )
     val questions by viewModel.questions.collectAsStateWithLifecycle()
-    QuizCategoryScreen(category, questions, onBack, viewModel::togglePracticed)
+    QuizCategoryScreen(category, questions, onBack, viewModel::togglePracticed, viewModel::deleteQuestion)
 }
 
 @Composable
@@ -39,7 +40,8 @@ fun QuizCategoryScreen(
     category: String,
     questions: List<AnsweredQuestion>,
     onBack: () -> Unit,
-    onTogglePracticed: (AnsweredQuestion) -> Unit
+    onTogglePracticed: (AnsweredQuestion) -> Unit,
+    onDelete: (AnsweredQuestion) -> Unit = {}
 ) {
     val practiced = questions.count { it.practiced }
     Column(
@@ -67,7 +69,10 @@ fun QuizCategoryScreen(
                     AnsweredQuestionCard(
                         q = q,
                         borderColor = categoryColor(category),
-                        onTogglePracticed = { onTogglePracticed(q) }
+                        onTogglePracticed = { onTogglePracticed(q) },
+                        onDelete = if (q.source == QuestionSource.MANUAL) {
+                            { onDelete(q) }
+                        } else null
                     )
                 }
             }

@@ -91,8 +91,8 @@ class HomeViewModel(
     }
 
     private suspend fun hasResume(): Boolean {
-        val ok = resumeRepository.profile.first().targetRole.isNotBlank()
-        if (!ok) _uiState.update { it.copy(message = "请先在\"我的\"里填写目标岗位/简历") }
+        val ok = resumeRepository.profile.first().rawText.isNotBlank()
+        if (!ok) _uiState.update { it.copy(message = "请先在\"我的\"里上传简历") }
         return ok
     }
 

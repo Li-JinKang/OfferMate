@@ -51,6 +51,13 @@ class PostStoreTest {
                 .map { FingerprintRow(it.exactHash, it.simhash, it.bucketKey) }
         override suspend fun existingExactHashes(hashes: List<String>): List<String> =
             byPost.value.values.flatten().map { it.exactHash }.filter { it in hashes }
+        override suspend fun insert(question: QuestionEntity) {
+            val list = byPost.value[question.postId].orEmpty() + question
+            byPost.value = byPost.value + (question.postId to list)
+        }
+        override suspend fun deleteById(id: String) {
+            byPost.value = byPost.value.mapValues { (_, list) -> list.filterNot { it.id == id } }
+        }
         override suspend fun insertAll(questions: List<QuestionEntity>) {
             val pid = questions.firstOrNull()?.postId ?: return
             byPost.value = byPost.value + (pid to ((byPost.value[pid] ?: emptyList()) + questions))

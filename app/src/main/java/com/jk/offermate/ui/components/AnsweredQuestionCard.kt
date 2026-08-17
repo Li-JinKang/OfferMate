@@ -40,7 +40,8 @@ fun AnsweredQuestionCard(
     modifier: Modifier = Modifier,
     borderColor: Color? = null,
     onTogglePracticed: (() -> Unit)? = null,
-    onFollowUp: (() -> Unit)? = null
+    onFollowUp: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
 ) {
     var revealed by rememberSaveable(q.question) { mutableStateOf(false) }
     Card(
@@ -93,7 +94,7 @@ fun AnsweredQuestionCard(
                 }
             }
 
-            if (onTogglePracticed != null || onFollowUp != null) {
+            if (onTogglePracticed != null || onFollowUp != null || onDelete != null) {
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     onTogglePracticed?.let { toggle ->
@@ -103,6 +104,10 @@ fun AnsweredQuestionCard(
                     }
                     onFollowUp?.let { followUp ->
                         TextButton(onClick = followUp) { Text("追问") }
+                    }
+                    onDelete?.let { delete ->
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = delete) { Text("删除") }
                     }
                 }
             }
