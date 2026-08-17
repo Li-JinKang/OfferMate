@@ -10,7 +10,15 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * AI 分析流水线第三步：为筛选出的相关题目生成参考答案。
  */
-class AnswerGenerator(private val aiClient: AiClient) {
+class AnswerGenerator(
+    private val aiClient: AiClient,
+    private val toolCallingLlm: ToolCallingLlm? = null,
+    private val toolRegistry: ToolRegistry = ToolRegistry(),
+    private val maxSteps: Int = 5
+) {
+
+    private val toolsEnabled: Boolean
+        get() = toolCallingLlm != null && !toolRegistry.isEmpty()
 
     fun buildMessages(
         relevant: List<RelevanceResult>,
@@ -43,7 +51,10 @@ class AnswerGenerator(private val aiClient: AiClient) {
                     if (profile.targetRole.isNotBlank()) append("目标岗位：${profile.targetRole}\n")
                     if (profile.skills.isNotEmpty()) append("技能：${profile.skills.joinToString("、")}\n")
                     if (profile.projects.isNotEmpty()) append("项目：${profile.projects.joinToString("、")}\n")
-                    if (profile.rawText.isNotBlank()) {
+                    if (toolsEnabled) {
+                        // 首屏最小画像：需要结合候选人经历时，让模型调用 read_resume 拉取
+                        append("如需结合候选人简历经历作答，调用 read_resume 工具（可传 query 关键词）。\n")
+                    } else if (profile.rawText.isNotBlank()) {
                         append("简历内容（可据此结合候选人经历作答）：\n")
                         append(profile.rawText.take(RESUME_CHAR_LIMIT))
                         append("\n")
@@ -64,9 +75,17 @@ class AnswerGenerator(private val aiClient: AiClient) {
         profile: ResumeProfile
     ): List<AnsweredQuestion> {
         if (relevant.isEmpty()) return emptyList()
-        val raw = aiClient.chat(buildMessages(relevant, profile))
+        val raw = runTurn(buildMessages(relevant, profile))
         return parse(raw, relevant)
     }
+
+    /** 有工具则走 agent 工具轮（模型可按需 read_resume），否则退回普通补全。 */
+    private suspend fun runTurn(messages: List<ChatMessage>): String =
+        if (toolsEnabled) {
+            ToolCallingAgent(toolCallingLlm!!, toolRegistry, maxSteps).run(messages)
+        } else {
+            aiClient.chat(messages)
+        }
 
     fun parse(raw: String, relevant: List<RelevanceResult>): List<AnsweredQuestion> {
         val jsonText = JsonSupport.extractJsonBlock(raw)

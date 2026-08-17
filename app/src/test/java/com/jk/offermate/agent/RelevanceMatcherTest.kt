@@ -27,6 +27,30 @@ class RelevanceMatcherTest {
     )
 
     @Test
+    fun `match uses read_resume tool when enabled`() = runTest {
+        val results = """{"results":[{"index":0,"score":90,"reason":"相关","matchedSkills":["Android"]}]}"""
+        val llm = FakeToolCallingLlm(
+            listOf(
+                LlmTurn.ToolInvocations(listOf(ToolCall("c1", "read_resume", "{}"))),
+                LlmTurn.Final(results)
+            )
+        )
+        val matcher = RelevanceMatcher(
+            aiClient = FakeAiClient.returning("不应走到普通补全"),
+            toolCallingLlm = llm,
+            toolRegistry = ToolRegistry(listOf(ResumeReaderTool(resumeTextProvider = { "技能：Android、Kotlin" })))
+        )
+
+        val out = matcher.match(listOf(threeQuestions[0]), profile, threshold = 60)
+
+        assertEquals(1, out.size)
+        assertEquals(90, out[0].score)
+        // 首屏提示可用 read_resume，且第二轮带回 TOOL 结果
+        assertTrue(llm.received.first().first.any { it.content.contains("read_resume") })
+        assertTrue(llm.received[1].first.any { it.role == Role.TOOL })
+    }
+
+    @Test
     fun `filters by threshold and sorts by score desc`() = runTest {
         val matcher = RelevanceMatcher(FakeAiClient.returning(loadFixture("relevance_response.json")))
 

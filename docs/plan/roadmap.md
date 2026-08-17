@@ -342,9 +342,14 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 - 顺带修复：简历改版后 `targetRole/skills` 常为空，追问改由 `read_resume` 取简历，画像不再缺失。
 - 单测：`FollowUpServiceTest` 新增"启用工具轮时 reply 调用 read_resume 并回填结果"。
 
+### 已完成 ✅（相关性/作答接入 read_resume）
+- `RelevanceMatcher` / `AnswerGenerator` 注入 `ToolCallingLlm?` + `ToolRegistry`：启用工具轮时**首屏只带最小画像**（岗位/技能/项目），不再塞简历全文，模型按需 `read_resume`；无 function-calling 的 provider 回退旧路径（仍带 rawText）。
+- `AppContainer` 抽出共享 `resumeToolRegistry` + `toolCallingLlm`，供追问/相关性/作答复用。
+- 单测：`RelevanceMatcherTest` / `AnswerGeneratorTest` 各新增"启用工具轮时调用 read_resume 并回填"。
+
 ### 待办清单
-- [ ] 相关性/作答步骤同样接入"最小画像 + `read_resume`"（当前仍全量注入 rawText）。
 - [ ] 更多工具（`recall_memory` 接 P3.5 记忆、`list_categories` 等）与 Skills 打包。
+- [ ] 工具轮日志（TAG=OfferMate）便于真机观察模型是否调用工具、query 与结果。
 - [ ] `McpClient` + 配置项（用户可增删 MCP server）+ tool 映射。
 - [ ] Skills 打包机制（模板 + 工具集）与在流水线中的挂载。
 - [ ] `DeepSeekClient` 等实现工具轮的真实请求/解析（P5，真机/真实 Key 验证）。

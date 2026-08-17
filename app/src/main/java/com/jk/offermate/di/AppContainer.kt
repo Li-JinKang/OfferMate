@@ -121,11 +121,19 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         )
     }
 
+    // provider 支持 function-calling 时可用工具轮
+    private val toolCallingLlm: ToolCallingLlm? by lazy { aiClient as? ToolCallingLlm }
+
+    // 简历读取工具：首屏只带最小画像，模型按需拉取简历
+    private val resumeToolRegistry: ToolRegistry by lazy {
+        ToolRegistry(listOf(ResumeReaderTool(resumeTextProvider = { resumeRepository.profile.first().rawText })))
+    }
+
     override val analysisPipeline: AnalysisPipeline by lazy {
         AnalysisPipeline(
             extractor = QuestionExtractor(aiClient),
-            matcher = RelevanceMatcher(aiClient),
-            answerer = AnswerGenerator(aiClient)
+            matcher = RelevanceMatcher(aiClient, toolCallingLlm, resumeToolRegistry),
+            answerer = AnswerGenerator(aiClient, toolCallingLlm, resumeToolRegistry)
         )
     }
 
@@ -136,11 +144,8 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
                 // 追问历史按 token 预算裁剪，保留最近的多轮讨论
                 TokenWindowMemory(maxTokens = 3000, estimator = HeuristicTokenEstimator())
             ),
-            // provider 支持 function-calling 时启用工具轮：首屏只带最小画像，模型按需 read_resume
-            toolCallingLlm = aiClient as? ToolCallingLlm,
-            toolRegistry = ToolRegistry(
-                listOf(ResumeReaderTool(resumeTextProvider = { resumeRepository.profile.first().rawText }))
-            )
+            toolCallingLlm = toolCallingLlm,
+            toolRegistry = resumeToolRegistry
         )
     }
 

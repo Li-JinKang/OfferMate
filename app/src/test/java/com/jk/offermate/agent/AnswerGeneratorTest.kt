@@ -27,6 +27,29 @@ class AnswerGeneratorTest {
     )
 
     @Test
+    fun `answer uses read_resume tool when enabled`() = runTest {
+        val answers = """{"answers":[{"index":0,"answer":"分点答案","difficulty":"medium","keyPoints":["k"]}]}"""
+        val llm = FakeToolCallingLlm(
+            listOf(
+                LlmTurn.ToolInvocations(listOf(ToolCall("c1", "read_resume", "{}"))),
+                LlmTurn.Final(answers)
+            )
+        )
+        val generator = AnswerGenerator(
+            aiClient = FakeAiClient.returning("不应走到普通补全"),
+            toolCallingLlm = llm,
+            toolRegistry = ToolRegistry(listOf(ResumeReaderTool(resumeTextProvider = { "技能：Android" })))
+        )
+
+        val answered = generator.answer(listOf(relevant[0]), profile)
+
+        assertEquals(1, answered.size)
+        assertEquals("分点答案", answered[0].answer)
+        assertTrue(llm.received.first().first.any { it.content.contains("read_resume") })
+        assertTrue(llm.received[1].first.any { it.role == Role.TOOL })
+    }
+
+    @Test
     fun `generates answers mapped back with difficulty and carried relevance`() = runTest {
         val generator = AnswerGenerator(FakeAiClient.returning(loadFixture("answer_response.json")))
 
