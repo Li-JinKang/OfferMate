@@ -36,7 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.jk.offermate.data.ai.Difficulty
+import com.jk.offermate.agent.Difficulty
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.PuzzleGrid
 import com.jk.offermate.ui.components.WaveFillBlob

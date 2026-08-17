@@ -1,10 +1,10 @@
 package com.jk.offermate.data.importer
 
-import com.jk.offermate.data.ai.AiException
-import com.jk.offermate.data.ai.AnalysisPipeline
-import com.jk.offermate.data.ai.AnsweredQuestion
-import com.jk.offermate.data.ai.CategoryClassifier
-import com.jk.offermate.data.ai.ResumeProfile
+import com.jk.offermate.agent.AiException
+import com.jk.offermate.agent.AnalysisPipeline
+import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.CategoryClassifier
+import com.jk.offermate.agent.ResumeProfile
 import com.jk.offermate.data.ocr.OcrTextRecognizer
 import com.jk.offermate.data.reader.ContentReader
 import com.jk.offermate.data.reader.ExtractionMethod

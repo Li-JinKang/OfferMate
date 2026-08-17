@@ -20,8 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.jk.offermate.data.ai.AnsweredQuestion
-import com.jk.offermate.data.ai.QuestionSource
+import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.QuestionSource
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.AnsweredQuestionCard
 import com.jk.offermate.ui.theme.TextSecondary

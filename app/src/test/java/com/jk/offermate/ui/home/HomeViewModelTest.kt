@@ -1,6 +1,6 @@
 package com.jk.offermate.ui.home
 
-import com.jk.offermate.data.ai.ResumeProfile
+import com.jk.offermate.agent.ResumeProfile
 import com.jk.offermate.data.repository.FakePostRepository
 import com.jk.offermate.data.resume.ResumeRepository
 import com.jk.offermate.work.ImportScheduler

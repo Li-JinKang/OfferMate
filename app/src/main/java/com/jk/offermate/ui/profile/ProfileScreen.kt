@@ -45,7 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.Bitmap
-import com.jk.offermate.data.ai.ResumeProfile
+import com.jk.offermate.agent.ResumeProfile
 import com.jk.offermate.data.resume.PdfPageRenderer
 import com.jk.offermate.data.settings.AiProvider
 import com.jk.offermate.data.settings.AppSettings

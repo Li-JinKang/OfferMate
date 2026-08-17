@@ -1,7 +1,7 @@
 package com.jk.offermate.data.repository
 
-import com.jk.offermate.data.ai.ChatMessage
-import com.jk.offermate.data.ai.Role
+import com.jk.offermate.agent.ChatMessage
+import com.jk.offermate.agent.Role
 import com.jk.offermate.data.local.dao.ConversationDao
 import com.jk.offermate.data.local.entity.ChatMessageEntity
 import com.jk.offermate.data.local.entity.ConversationEntity

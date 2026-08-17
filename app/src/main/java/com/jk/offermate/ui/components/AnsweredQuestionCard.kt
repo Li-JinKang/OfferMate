@@ -24,7 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.jk.offermate.data.ai.AnsweredQuestion
+import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.ui.theme.BadgeHotBg
 import com.jk.offermate.ui.theme.BadgeHotText
 import com.jk.offermate.ui.theme.TextSecondary

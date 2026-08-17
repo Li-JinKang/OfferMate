@@ -1,7 +1,7 @@
 package com.jk.offermate.ui.quiz
 
-import com.jk.offermate.data.ai.AnsweredQuestion
-import com.jk.offermate.data.ai.QuestionSource
+import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.QuestionSource
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

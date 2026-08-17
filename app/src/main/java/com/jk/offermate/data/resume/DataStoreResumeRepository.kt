@@ -6,7 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.jk.offermate.data.ai.ResumeProfile
+import com.jk.offermate.agent.ResumeProfile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 

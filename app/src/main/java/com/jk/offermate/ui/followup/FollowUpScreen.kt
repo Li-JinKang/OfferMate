@@ -41,9 +41,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.jk.offermate.data.ai.AnsweredQuestion
-import com.jk.offermate.data.ai.ChatMessage
-import com.jk.offermate.data.ai.Role
+import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.ChatMessage
+import com.jk.offermate.agent.Role
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.MarkdownText
 import com.jk.offermate.ui.theme.CardSurface

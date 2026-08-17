@@ -1,7 +1,7 @@
 package com.jk.offermate.ui.quiz
 
-import com.jk.offermate.data.ai.AnsweredQuestion
-import com.jk.offermate.data.ai.QuestionSource
+import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.QuestionSource
 
 /**
  * 分类归并：把 AI 产出的细粒度标签（如 handler、sharedpreference）按关键词归并到**粗类目**，

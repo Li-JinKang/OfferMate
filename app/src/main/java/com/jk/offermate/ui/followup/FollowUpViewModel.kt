@@ -4,11 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.jk.offermate.data.ai.AnsweredQuestion
-import com.jk.offermate.data.ai.ChatMessage
-import com.jk.offermate.data.ai.Role
-import com.jk.offermate.data.ai.chat.FollowUpService
-import com.jk.offermate.data.ai.chat.QuestionContext
+import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.ChatMessage
+import com.jk.offermate.agent.Role
+import com.jk.offermate.agent.chat.FollowUpService
+import com.jk.offermate.agent.chat.QuestionContext
 import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
 import com.jk.offermate.data.resume.ResumeRepository

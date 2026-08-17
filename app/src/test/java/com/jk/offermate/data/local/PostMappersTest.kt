@@ -1,7 +1,7 @@
 package com.jk.offermate.data.local
 
-import com.jk.offermate.data.ai.AnsweredQuestion
-import com.jk.offermate.data.ai.Difficulty
+import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.Difficulty
 import com.jk.offermate.data.local.entity.ImportedPostEntity
 import com.jk.offermate.domain.model.PostBadge
 import com.jk.offermate.domain.model.Platform
