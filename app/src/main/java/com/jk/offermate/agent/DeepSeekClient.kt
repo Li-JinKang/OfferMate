@@ -2,6 +2,8 @@ package com.jk.offermate.agent
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArrayBuilder
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -10,6 +12,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -27,19 +30,25 @@ class DeepSeekClient(
     private val modelProvider: suspend () -> String = { AiDefaults.MODEL },
     private val baseUrlProvider: suspend () -> String = { "https://api.deepseek.com/" },
     private val client: OkHttpClient = defaultClient()
-) : AiClient {
+) : AiClient, ToolCallingLlm {
 
-    override suspend fun chat(messages: List<ChatMessage>): String {
+    override suspend fun chat(messages: List<ChatMessage>): String =
+        parseContent(post(buildRequestBody(modelProvider(), messages, emptyList())))
+
+    override suspend fun chat(messages: List<ChatMessage>, tools: List<ToolSpec>): LlmTurn =
+        parseTurn(post(buildRequestBody(modelProvider(), messages, tools)))
+
+    /** 发送请求，返回原始响应文本；非 2xx 抛 [AiException]。 */
+    private suspend fun post(bodyJson: String): String {
         val apiKey = apiKeyProvider().trim()
         if (apiKey.isEmpty()) throw AiException("未配置 API Key，请在设置中填写")
 
         val endpoint = baseUrlProvider().trim().trimEnd('/') + "/chat/completions"
-        val requestBody = buildRequestBody(modelProvider(), messages)
         val request = Request.Builder()
             .url(endpoint)
             .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
-            .post(requestBody.toRequestBody(JSON_MEDIA_TYPE))
+            .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
         val (code, text) = withContext(Dispatchers.IO) {
@@ -50,23 +59,90 @@ class DeepSeekClient(
         if (code !in 200..299) {
             throw AiException("DeepSeek 调用失败（HTTP $code）：${text.take(300)}")
         }
-        return parseContent(text)
+        return text
     }
 
-    private fun buildRequestBody(model: String, messages: List<ChatMessage>): String {
+    internal fun buildRequestBody(model: String, messages: List<ChatMessage>, tools: List<ToolSpec>): String {
         val obj = buildJsonObject {
             put("model", model)
             put("stream", false)
-            putJsonArray("messages") {
-                messages.forEach { m ->
-                    addJsonObject {
-                        put("role", m.role.name.lowercase())
-                        put("content", m.content)
+            putJsonArray("messages") { messages.forEach { serializeMessage(it) } }
+            if (tools.isNotEmpty()) {
+                putJsonArray("tools") {
+                    tools.forEach { spec ->
+                        addJsonObject {
+                            put("type", "function")
+                            putJsonObject("function") {
+                                put("name", spec.name)
+                                put("description", spec.description)
+                                put("parameters", parseSchema(spec.parametersJson))
+                            }
+                        }
                     }
                 }
             }
         }
         return obj.toString()
+    }
+
+    private fun JsonArrayBuilder.serializeMessage(m: ChatMessage) {
+        addJsonObject {
+            put("role", m.role.name.lowercase())
+            put("content", m.content)
+            if (m.role == Role.TOOL) {
+                m.toolCallId?.let { put("tool_call_id", it) }
+            } else if (m.toolCalls.isNotEmpty()) {
+                putJsonArray("tool_calls") {
+                    m.toolCalls.forEach { c ->
+                        addJsonObject {
+                            put("id", c.id)
+                            put("type", "function")
+                            putJsonObject("function") {
+                                put("name", c.name)
+                                put("arguments", c.argumentsJson)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun parseSchema(json: String): JsonElement =
+        if (json.isBlank()) buildJsonObject { put("type", "object") }
+        else runCatching { JsonSupport.json.parseToJsonElement(json) }
+            .getOrDefault(buildJsonObject { put("type", "object") })
+
+    /** 解析一轮响应：有 tool_calls 则为工具调用，否则为最终文本。 */
+    internal fun parseTurn(raw: String): LlmTurn {
+        val message = firstMessage(raw)
+        val toolCalls = message["tool_calls"]?.jsonArray
+        if (!toolCalls.isNullOrEmpty()) {
+            val calls = toolCalls.mapNotNull { element ->
+                val obj = element.jsonObject
+                val fn = obj["function"]?.jsonObject ?: return@mapNotNull null
+                ToolCall(
+                    id = obj["id"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                    name = fn["name"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                    argumentsJson = fn["arguments"]?.jsonPrimitive?.contentOrNull ?: "{}"
+                )
+            }
+            if (calls.isNotEmpty()) return LlmTurn.ToolInvocations(calls)
+        }
+        return LlmTurn.Final(message["content"]?.jsonPrimitive?.contentOrNull.orEmpty())
+    }
+
+    private fun firstMessage(raw: String) = run {
+        val root = try {
+            JsonSupport.json.parseToJsonElement(raw).jsonObject
+        } catch (e: Exception) {
+            throw AiException("无法解析 DeepSeek 响应：${raw.take(200)}", e)
+        }
+        val choices = root["choices"]?.jsonArray
+            ?: throw AiException("DeepSeek 响应缺少 choices：${raw.take(200)}")
+        val first = choices.firstOrNull()?.jsonObject
+            ?: throw AiException("DeepSeek 响应 choices 为空")
+        first["message"]?.jsonObject ?: throw AiException("DeepSeek 响应缺少 message")
     }
 
     private fun parseContent(raw: String): String {

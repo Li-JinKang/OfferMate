@@ -1,10 +1,20 @@
 package com.jk.offermate.agent
 
-/** 对话消息角色。 */
-enum class Role { SYSTEM, USER, ASSISTANT }
+/** 对话消息角色。TOOL 表示工具执行结果消息。 */
+enum class Role { SYSTEM, USER, ASSISTANT, TOOL }
 
-/** 一条对话消息。 */
-data class ChatMessage(val role: Role, val content: String)
+/**
+ * 一条对话消息。普通对话只用 [role] + [content]；工具轮额外用到：
+ * - assistant 发起调用：[toolCalls] 非空；
+ * - 工具返回结果：role=TOOL，[toolCallId] 指向对应调用，[content] 为结果。
+ */
+data class ChatMessage(
+    val role: Role,
+    val content: String,
+    val toolCalls: List<ToolCall> = emptyList(),
+    val toolCallId: String? = null,
+    val toolName: String? = null
+)
 
 /**
  * 大模型调用抽象。底层可对接 DeepSeek 等 OpenAI 兼容接口（BYOK）。

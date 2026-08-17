@@ -329,9 +329,16 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 - [ ] Prompt/协议：`tools` 定义与 `tool_calls` 解析（含畸形/多次调用/无调用直接作答）。
 - [ ] MCP 适配：用 fake MCP server（内存实现）验证 `listTools`/`callTool` → `Tool` 映射。
 
+### 已完成 ✅（自研薄框架核心）
+- 端口与循环：`ToolCallingLlm`（工具轮端口）+ `LlmTurn`(Final/ToolInvocations) + `Tool`/`ToolRegistry` + `ToolCallingAgent`（发送→执行工具→回填→再发送，带 maxSteps 兜底）。
+- 消息模型扩展：`ChatMessage` 支持 `toolCalls` 与 `Role.TOOL`（工具结果）；`ToolCall`/`ToolSpec`。
+- Provider：`DeepSeekClient` 实现 `ToolCallingLlm`（构造 OpenAI `tools`、解析 `tool_calls`/最终文本），与原 `chat(messages)` 简单补全共存。
+- 首个工具：`ResumeReaderTool`（按需读简历，可 query 过滤；`resumeTextProvider` 注入解耦）。
+- 单测：`ToolCallingAgentTest`（工具轮/未知工具/步数上限）、`ResumeReaderToolTest`、`DeepSeekToolCallingTest`（tools 请求 + tool_calls/final 解析 + tool 结果序列化）。
+
 ### 待办清单
-- [ ] `AiClient` 扩展工具轮 + `ToolCallingAgent` + `Tool`/`ToolRegistry`（JVM 单测）。
-- [ ] `ResumeReaderTool`（首个本地工具）+ 接入相关性/作答步骤（首屏最小画像）。
+- [ ] **接入消费方**：把相关性/作答（或先接追问 `FollowUpService`）改为"首屏最小画像 + `read_resume` 按需拉取"，用 `ToolCallingAgent` 驱动；对不支持 function-calling 的 provider 回退旧路径。
+- [ ] `AppContainer` 装配 `ToolRegistry`/`ToolCallingAgent`（resume 工具接 `ResumeRepository`）。
 - [ ] `McpClient` + 配置项（用户可增删 MCP server）+ tool 映射。
 - [ ] Skills 打包机制（模板 + 工具集）与在流水线中的挂载。
 - [ ] `DeepSeekClient` 等实现工具轮的真实请求/解析（P5，真机/真实 Key 验证）。
