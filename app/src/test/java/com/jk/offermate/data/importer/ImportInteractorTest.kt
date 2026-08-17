@@ -68,6 +68,27 @@ class ImportInteractorTest {
     }
 
     @Test
+    fun `importFromUrl runs OCR on images and merges recognized text into content`() = runTest {
+        val html = "<html><body><p>${"面经正文内容。".repeat(10)}</p>" +
+            "<img src=\"https://cdn.example.com/pic.jpg\"/></body></html>"
+        val fakeOcr = object : com.jk.offermate.data.ocr.OcrTextRecognizer {
+            override suspend fun recognize(imageBytes: ByteArray, source: String) = "图中的题目：什么是协程"
+        }
+        val fakeFetcher = object : com.jk.offermate.data.reader.ImageFetcher {
+            override suspend fun fetch(url: String) = ByteArray(8)
+        }
+        val interactor = ImportInteractor(reader(html), realPipeline(), fakeOcr, fakeFetcher)
+
+        val result = interactor.importFromUrl("https://www.nowcoder.com/share/jump/x", profile)
+
+        assertTrue(result is ImportResult.Success)
+        val content = (result as ImportResult.Success).content
+        assertTrue(content.imageUrls.isNotEmpty())
+        assertTrue(content.text.contains("【图片识别内容】"))
+        assertTrue(content.text.contains("图中的题目：什么是协程"))
+    }
+
+    @Test
     fun `importFromUrl returns NeedsManualInput when read fails`() = runTest {
         val interactor = ImportInteractor(reader(html = null, dynamic = null), realPipeline())
 

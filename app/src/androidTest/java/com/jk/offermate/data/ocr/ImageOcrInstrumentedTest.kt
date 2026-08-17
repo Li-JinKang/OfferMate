@@ -40,7 +40,8 @@ class ImageOcrInstrumentedTest {
         log("展开后URL = $finalUrl")
 
         val images = PostImageExtractor.extractXhsImageUrls(html)
-        log("提取到图片 ${images.size} 张")
+        log("提取到图片 ${images.size} 张，地址如下：")
+        images.forEachIndexed { i, url -> log("  图片[$i] = $url") }
 
         val recognizer = MlKitTextRecognizer()
         try {
@@ -52,9 +53,10 @@ class ImageOcrInstrumentedTest {
                     log("[下载失败] $url")
                     return@forEachIndexed
                 }
-                val text = runCatching { recognizer.recognize(bytes) }
+                // 识别文字由 MlKitTextRecognizer 打日志（TAG=OfferMateOCR，含 source 地址与文字）
+                val text = runCatching { recognizer.recognize(bytes, url) }
                     .getOrElse { "[OCR异常] ${it.javaClass.simpleName}: ${it.message}" }
-                log("---- OCR[$i] 结果 ----\n$text")
+                log("---- OCR[$i] 结果（source=$url）----\n$text")
             }
         } finally {
             recognizer.close()

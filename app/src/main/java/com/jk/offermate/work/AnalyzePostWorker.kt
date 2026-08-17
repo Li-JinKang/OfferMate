@@ -56,7 +56,9 @@ class AnalyzePostWorker(
             when (result) {
                 is ImportResult.Success -> {
                     val title = result.content.title.ifBlank { "面经解析" }
-                    Log.d(TAG, "SUCCESS title='$title' contentLen=${result.content.text.length} questions=${result.questions.size}")
+                    val images = result.content.imageUrls
+                    Log.d(TAG, "SUCCESS title='$title' contentLen=${result.content.text.length} questions=${result.questions.size} hasImages=${images.isNotEmpty()} imageCount=${images.size}")
+                    images.forEachIndexed { i, u -> Log.d(TAG, "  image[$i]=$u") }
                     store.saveSuccess(id, title, result.content.text.take(140), result.questions)
                     notifier.notifyDone("《$title》已整理", "为你整理了 ${result.questions.size} 道相关题")
                 }

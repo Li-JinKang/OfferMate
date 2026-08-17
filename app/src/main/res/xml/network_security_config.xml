@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 图片 CDN 多为 http 明文，允许对其明文下载（供 OCR）；其余仍默认禁明文 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">xhscdn.com</domain>
+        <domain includeSubdomains="true">nowcoder.com</domain>
+    </domain-config>
+</network-security-config>

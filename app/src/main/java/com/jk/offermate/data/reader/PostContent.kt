@@ -12,7 +12,9 @@ data class PostContent(
     val title: String,
     val text: String,
     val sourceUrl: String,
-    val method: ExtractionMethod
+    val method: ExtractionMethod,
+    /** 帖子中的图片链接（面经常以长图发布，供 OCR 使用）。 */
+    val imageUrls: List<String> = emptyList()
 ) {
     /** 正文长度达到可用阈值才认为读取成功。 */
     val isUsable: Boolean

@@ -14,9 +14,11 @@ import org.jsoup.Jsoup
 class HtmlContentExtractor {
 
     fun extract(html: String, url: String): PostContent {
+        val images = extractImages(html, url)
+
         // 小红书：优先从 __INITIAL_STATE__ 提取笔记正文，剔除评论/推荐噪声
         if (isXiaohongshu(url)) {
-            XhsNoteExtractor.extract(html, url)?.let { return it }
+            XhsNoteExtractor.extract(html, url)?.let { return it.copy(imageUrls = images) }
         }
 
         val readable = runCatching {
@@ -31,7 +33,8 @@ class HtmlContentExtractor {
                 title = readable.first,
                 text = readable.second,
                 sourceUrl = url,
-                method = ExtractionMethod.STATIC_HTML
+                method = ExtractionMethod.STATIC_HTML,
+                imageUrls = images
             )
         }
 
@@ -43,9 +46,14 @@ class HtmlContentExtractor {
             title = title,
             text = bodyText,
             sourceUrl = url,
-            method = ExtractionMethod.STATIC_HTML
+            method = ExtractionMethod.STATIC_HTML,
+            imageUrls = images
         )
     }
+
+    private fun extractImages(html: String, url: String): List<String> =
+        if (isXiaohongshu(url)) PostImageExtractor.extractXhsImageUrls(html)
+        else PostImageExtractor.extractHtmlImageUrls(html, url)
 
     private fun isXiaohongshu(url: String): Boolean =
         url.contains("xiaohongshu", ignoreCase = true) ||

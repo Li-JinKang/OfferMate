@@ -9,7 +9,8 @@ interface OcrTextRecognizer {
     /**
      * 识别一张图片中的文字。
      * @param imageBytes 图片原始字节（jpg/png 等）。
+     * @param source 图片来源标识（如图片 URL），仅用于日志排查。
      * @return 识别出的文本（按阅读顺序拼接）；无法解码或无文字时返回空串。
      */
-    suspend fun recognize(imageBytes: ByteArray): String
+    suspend fun recognize(imageBytes: ByteArray, source: String = ""): String
 }

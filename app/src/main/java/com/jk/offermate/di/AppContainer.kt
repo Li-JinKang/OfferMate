@@ -13,6 +13,8 @@ import com.jk.offermate.data.ai.chat.FollowUpService
 import com.jk.offermate.data.ai.chat.HeuristicTokenEstimator
 import com.jk.offermate.data.ai.chat.TokenWindowMemory
 import com.jk.offermate.data.importer.ImportInteractor
+import com.jk.offermate.data.ocr.MlKitTextRecognizer
+import com.jk.offermate.data.reader.OkHttpImageFetcher
 import com.jk.offermate.data.local.OfferMateDatabase
 import com.jk.offermate.data.local.PostStore
 import com.jk.offermate.data.reader.ContentReader
@@ -146,7 +148,12 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val importInteractor: ImportInteractor by lazy {
-        ImportInteractor(contentReader, analysisPipeline)
+        ImportInteractor(
+            contentReader = contentReader,
+            analysisPipeline = analysisPipeline,
+            ocrRecognizer = MlKitTextRecognizer(),
+            imageFetcher = OkHttpImageFetcher()
+        )
     }
 
     override val postStore: PostStore by lazy {

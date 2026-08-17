@@ -32,6 +32,8 @@ class AnswerGenerator(private val aiClient: AiClient) {
                     3. index 必须与输入题目的序号一一对应。
                     4. answer 字段使用 **Markdown** 且**分点作答**：用有序列表(1. 2. 3.)或无序列表(- )组织要点，
                        关键术语用 **加粗**，代码/类名用 `反引号`。保持条理清晰、简明扼要。
+                    5. 整体必须是**合法 JSON**：answer 内的换行一律用 \n 转义，字符串内的引号用 \" 转义，
+                       **不要在 JSON 中使用 ``` 代码围栏**（会破坏 JSON）；多行代码写在同一字符串里并用 \n 分隔。
                 """.trimIndent()
             ),
             ChatMessage(
