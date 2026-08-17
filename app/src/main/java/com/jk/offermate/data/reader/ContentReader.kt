@@ -33,6 +33,7 @@ class ContentReader(
 
     suspend fun read(rawUrl: String): ReadResult {
         val resolved = urlResolver.resolve(rawUrl)
+        val notExpanded = looksLikeShortLink(resolved)
 
         // 1) 静态抓取
         val html = htmlFetcher.fetch(resolved)
@@ -45,10 +46,20 @@ class ContentReader(
         val dynamic = runCatching { dynamicReader?.read(resolved) }.getOrNull()
         if (dynamic != null && dynamic.isUsable) return ReadResult.Success(dynamic)
 
-        // 3) 手动粘贴兜底
-        return ReadResult.NeedsManualInput(
-            resolvedUrl = resolved,
-            reason = "自动读取失败，请手动粘贴正文"
-        )
+        // 3) 手动粘贴兜底 —— 按卡点给出可诊断的原因
+        val reason = when {
+            notExpanded -> "短链未能展开为真实地址（网络异常或被平台风控），请手动粘贴正文"
+            html == null -> "页面抓取失败（网络异常，或被风控/需登录），请手动粘贴正文"
+            else -> "已获取页面但未提取到正文（可能是图片面经或需登录态），请手动粘贴正文"
+        }
+        return ReadResult.NeedsManualInput(resolvedUrl = resolved, reason = reason)
+    }
+
+    /** 展开后仍像短链/跳转链，说明重定向未被成功跟随。 */
+    private fun looksLikeShortLink(url: String): Boolean =
+        SHORT_LINK_MARKERS.any { url.contains(it, ignoreCase = true) }
+
+    private companion object {
+        val SHORT_LINK_MARKERS = listOf("xhslink", "/share/jump", "b23.tv", "t.cn")
     }
 }

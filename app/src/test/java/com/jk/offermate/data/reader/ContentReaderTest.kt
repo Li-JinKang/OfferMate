@@ -115,4 +115,49 @@ class ContentReaderTest {
 
         assertTrue(result is ReadResult.NeedsManualInput)
     }
+
+    @Test
+    fun `reason points to short link not expanded when resolved url stays a short link`() = runTest {
+        val reader = ContentReader(
+            urlResolver = FakeResolver("https://xhslink.cn/o/6Gz0nDGZxAE"), // 解析后仍是短链 = 展开失败
+            htmlFetcher = FakeFetcher(null),
+            extractor = extractor,
+            dynamicReader = null
+        )
+
+        val result = reader.read("https://xhslink.cn/o/6Gz0nDGZxAE")
+
+        assertTrue(result is ReadResult.NeedsManualInput)
+        assertTrue((result as ReadResult.NeedsManualInput).reason.contains("短链未能展开"))
+    }
+
+    @Test
+    fun `reason points to fetch failure when page cannot be fetched`() = runTest {
+        val reader = ContentReader(
+            urlResolver = FakeResolver("https://www.xiaohongshu.com/explore/real"),
+            htmlFetcher = FakeFetcher(null),
+            extractor = extractor,
+            dynamicReader = null
+        )
+
+        val result = reader.read("https://xhslink.cn/o/shortcode")
+
+        assertTrue(result is ReadResult.NeedsManualInput)
+        assertTrue((result as ReadResult.NeedsManualInput).reason.contains("页面抓取失败"))
+    }
+
+    @Test
+    fun `reason points to empty body when page fetched but no usable text`() = runTest {
+        val reader = ContentReader(
+            urlResolver = FakeResolver("https://www.xiaohongshu.com/explore/real"),
+            htmlFetcher = FakeFetcher(loadFixture("xhs_jsonly.html")),
+            extractor = extractor,
+            dynamicReader = null
+        )
+
+        val result = reader.read("https://xhslink.cn/o/shortcode")
+
+        assertTrue(result is ReadResult.NeedsManualInput)
+        assertTrue((result as ReadResult.NeedsManualInput).reason.contains("未提取到正文"))
+    }
 }

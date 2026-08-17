@@ -19,6 +19,7 @@ import com.jk.offermate.data.reader.ContentReader
 import com.jk.offermate.data.reader.HtmlContentExtractor
 import com.jk.offermate.data.reader.OkHttpHtmlFetcher
 import com.jk.offermate.data.reader.OkHttpUrlResolver
+import com.jk.offermate.data.reader.WebViewContentReader
 import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
 import com.jk.offermate.data.repository.RoomConversationRepository
@@ -119,12 +120,15 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         )
     }
 
+    private val htmlContentExtractor: HtmlContentExtractor by lazy { HtmlContentExtractor() }
+
     private val contentReader: ContentReader by lazy {
         ContentReader(
             urlResolver = OkHttpUrlResolver(),
             htmlFetcher = OkHttpHtmlFetcher(),
-            extractor = HtmlContentExtractor(),
-            dynamicReader = null // 小红书 WebView 读取(P2.4)后续接入
+            extractor = htmlContentExtractor,
+            // WebView 离屏渲染兜底：真实浏览器环境跟随短链跳转 + 执行 JS，解决小红书静态抓取失败
+            dynamicReader = WebViewContentReader(context, htmlContentExtractor)
         )
     }
 

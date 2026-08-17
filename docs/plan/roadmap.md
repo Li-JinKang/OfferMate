@@ -221,6 +221,96 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 
 ---
 
+## 待办 · 链接读取健壮性 + 图片面经 OCR（现网问题）
+
+### 现象与结论（已确认）
+- 现网日志：`NEEDS_MANUAL resolved=https://xhslink.cn/o/6Gz0nDGZxAE reason=短链未能展开为真实地址（网络异常或被平台风控）` —— **展开后 `resolved` 仍是短链**，说明 `OkHttpUrlResolver.resolve()` 在设备网络下未成功跟随重定向（`runCatching{}.getOrDefault(rawUrl)` 把异常/拦截吞掉后回退原短链）。
+- 同一条链接在 `LiveLinkReadingTest`（JVM/测试机）能展开并读到正文：说明是**环境差异**（IP/风控/时效 `xsec_token`），非逻辑差异。生产 `ContentReader` 的 `dynamicReader = null`，只有脆弱的静态抓取。
+- 已做的小改进 ✅：`ContentReader` 按卡点输出可诊断原因（短链未展开 / 抓取失败 / 抓到但无正文），并加 `ContentReaderTest` 覆盖。
+
+### 待办 · WebView 离屏渲染读取（P2.4 落地，修根因）
+- [ ] `WebViewContentReader : DynamicContentReader`：离屏 `WebView`（真实浏览器 UA + Cookie + 执行 JS）加载展开后的页面，`onPageFinished` 后注入 JS 取 `window.__INITIAL_STATE__`（小红书正文）或 `document.body.innerText`（牛客/通用），超时兜底。
+- [ ] 短链展开也交由 WebView 自然跳转拿最终 URL，解决"短链未展开"。
+- [ ] 接入 `AppContainer`（`dynamicReader = WebViewContentReader(...)`）。纯逻辑（脚本文本处理/结果判定）单测；渲染真机验证。
+
+### 待办 · 图片面经 OCR（图片转文字）
+背景：牛客/小红书大量面经以**长图**发布，纯文本读取拿不到题目（现网案例：正文只有话题标签，题目全在图里）。
+
+**调研结论（已用真实链接验证）✅**：
+- 小红书笔记页 `window.__INITIAL_STATE__` 里，当前笔记的图片在**第一个** `imageList` 数组：
+  ```
+  "imageList":[ { "url":"http://sns-webpic-qc.xhscdn.com/.../notes_pre_post/<fileId>!h5_1080jpg",
+                  "infoList":[{"imageScene":"H5_DTL","url":"...!h5_1080jpg"},   // 详情大图
+                              {"imageScene":"H5_PRV","url":"...!style_..."}],   // 预览小图
+                  "fileId":"notes_pre_post/<fileId>","height":..,"width":.. }, ... ]
+  ```
+  规则：详情大图以 `!h5_` 结尾、预览小图以 `!style_` 结尾；**取详情大图**，排除预览、评论头像（`sns-avatar-qc`）、静态资源，且只取第一个 imageList（避开"推荐笔记"）。字段顺序在不同响应下会变，不能依赖 `imageScene` 与 `url` 紧邻。
+- 牛客：正文 HTML 的 `<img>`（Jsoup 绝对化 + 去重）。
+- 图片 URL 为 `http` 明文 CDN，带时效路径段（如 `/202608162036/`），会过期 → 需即时下载。
+
+**已完成 ✅**：
+- `PostImageExtractor`（纯逻辑）：`extractXhsImageUrls`（首个 imageList、排除 `!style_`、解码 `\u002F`）、`extractHtmlImageUrls`（通用 `<img>`）。
+- `PostImageExtractorTest`（离线夹具 `xhs_imagelist_sample.html`）：有序取详情大图、解码、排除预览/头像/推荐笔记。
+- `ImageOcrProbeTest`（手动探针，真实抓取）：打印帖子全部图片 URL；提供 `-Docr.key`（多模态模型）时对每张图 OCR 并打印文字，供人工校验。实测该链接稳定取到 2 张详情大图。
+
+**引擎选型（已定）✅：端侧 ML Kit Text Recognition v2**
+- 离线、免费、无需 Key，契合"纯端侧"定位；不消耗 LLM token。
+- **中英文数字混排要求**：计算机面经含大量英文专业术语（如 `Kotlin`、`Handler`、`ThreadLocal`）、数字、符号。选 **中文识别模型** `com.google.mlkit:text-recognition-chinese`——其模型在识别中文的同时也覆盖**拉丁字母与数字**，适合中英混排；上线前用探针/真机核对英文术语与代码样式（大小写、点号、括号）的识别质量。若个别纯英文长段落识别偏差明显，再评估对该图**叠加拉丁模型** `text-recognition`（`TextRecognition.getClient(TextRecognizerOptions.DEFAULT)`）做二次校正的必要性。
+- 依赖：`com.google.mlkit:text-recognition-chinese`（APK +数 MB，模型可用 Play 按需下发以减小包体）。
+
+**待办**：
+- [ ] 抽象 `OcrTextRecognizer` 接口（输入图片字节/Bitmap → 输出文本 + 置信度/块）；Android/ML Kit 实现（真机或 androidTest 验证），测试用 fake，合并/排版逻辑 JVM 可测。
+- [ ] 多图顺序拼接（按 imageList 顺序）、去重与空白/水印行清理；OCR 结果缓存进 `ImportedPost` 避免重复识别。
+- [ ] 接入读取链路：WebView 取到 `__INITIAL_STATE__` → `PostImageExtractor` 提图 → 下载 → ML Kit OCR → 文本拼入正文 → 走"抽题→相关性→作答"。
+
+**运行 OCR 探针校验**：
+```
+./gradlew :app:testDebugUnitTest --tests "com.jk.offermate.data.reader.ImageOcrProbeTest" --console=plain \
+  -Docr.key=<视觉模型Key> -Docr.model=qwen-vl-max \
+  -Docr.baseUrl=https://dashscope.aliyuncs.com/compatible-mode/v1/
+```
+
+---
+
+## 待办 · 工具调用（Function Calling / MCP / Skills）★重点
+
+> 这一部分是架构级能力，**必须重视**，会影响 `AiClient`、分析流水线与记忆系统的设计。
+
+### 动机
+当前把整份简历/画像塞进每次 Prompt：成本高、上下文被污染、也不利于"方向切换/多简历"。改为 **Agentic 按需取数**：
+- 帖子**首次**发给 LLM 时，只带**最小画像**（如核心技能 `Java`、`Android`、目标岗位），以及帖子正文/OCR 文本。
+- 给 LLM 挂一组**工具**；当它判断信息不足（例如需要确认候选人是否做过音视频、是否熟悉某框架）时，**自行调用工具**拉取更多上下文，再继续作答。
+- 典型工具：`read_resume(query|section)` —— 简历阅读器，按需返回相关简历片段（由 `ResumeRepository`/端侧检索支撑）；后续可扩展 `recall_memory(scope,query)`（接 P3.5 记忆）、`get_projects()` 等。
+
+### 能力形态
+- **Function Calling（本地工具）**：端侧注册的工具，LLM 通过 OpenAI 兼容的 `tools` / `tool_calls` 协议调用；由 App 本地执行并回填结果。DeepSeek / qwen / glm 均支持。
+- **MCP（Model Context Protocol）**：以 MCP 客户端连接外部/可插拔工具服务器（Android 侧走 HTTP/SSE 传输），把 MCP 暴露的 tool 映射为可供 LLM 调用的工具。用户可配置 MCP server。
+- **Skills**：把"提示词模板 + 所需工具集 + 参数"打包为可复用技能（如"简历深读技能""公司面经风格分析技能"），供流水线按场景挂载。
+
+### 需要的改造
+- **`AiClient` 升级**：现为 `suspend fun chat(messages): String`，需支持工具轮：
+  - 传入 `tools` 定义；返回结构化结果（普通文本 **或** `tool_calls`）。
+  - 新增 **Agent 循环**（`ToolCallingAgent`）：`发送(messages+tools) → 若有 tool_calls → 本地/MCP 执行 → 追加 tool 结果消息 → 再次发送`，直至产出最终答案或达到步数上限。
+- **工具抽象**：`Tool { name, description, parametersSchema, suspend fun call(argsJson): String }` + `ToolRegistry`；`ResumeReaderTool` 首发。
+- **MCP 客户端**：`McpClient`（连接、`listTools`、`callTool`），把 MCP tool 适配为 `Tool`。
+- **接入流水线**：相关性筛选/作答步骤改为"最小画像 + 工具可用"，让模型按需 `read_resume`；与 P3.5 `recall` 协同（工具从记忆/简历取数）。
+- **可插拔 Provider**：仅对**支持 function calling** 的 provider 启用工具轮；不支持时回退为"直接携带精简画像"的旧路径。
+
+### 测试（测试先行，尽量 JVM 可测）
+- [ ] `ToolCallingAgent` 循环：用 `FakeAiClient` 先返回一个 `tool_call(read_resume)`、再返回最终答案 → 断言工具被调用、结果被回填、最终答案正确、步数上限生效。
+- [ ] `ResumeReaderTool`：给定简历文本 + query → 返回相关片段（纯逻辑可测）。
+- [ ] Prompt/协议：`tools` 定义与 `tool_calls` 解析（含畸形/多次调用/无调用直接作答）。
+- [ ] MCP 适配：用 fake MCP server（内存实现）验证 `listTools`/`callTool` → `Tool` 映射。
+
+### 待办清单
+- [ ] `AiClient` 扩展工具轮 + `ToolCallingAgent` + `Tool`/`ToolRegistry`（JVM 单测）。
+- [ ] `ResumeReaderTool`（首个本地工具）+ 接入相关性/作答步骤（首屏最小画像）。
+- [ ] `McpClient` + 配置项（用户可增删 MCP server）+ tool 映射。
+- [ ] Skills 打包机制（模板 + 工具集）与在流水线中的挂载。
+- [ ] `DeepSeekClient` 等实现工具轮的真实请求/解析（P5，真机/真实 Key 验证）。
+
+---
+
 ## 待办 · 后续功能（用户规划）
 
 1. ~~**题目追问页**：提供页面对某道题向 AI 发起提问，根据 AI 回答**更新该题答案**（依赖会话层，见 memory.md 的追问会话）。~~ ✅ 已完成
@@ -238,3 +328,13 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 4. **题库拼图增强**：
    - 更丰富的配色（扩充调色板 / 按分类稳定取色 / 渐变）。
    - 支持**拖拽排序**（自定义顺序持久化到本地）。
+5. **用户自定义分类与题目**：
+   - 分类：支持用户**手动新增/重命名/删除分类**（考点标签），不再只由 AI 抽取产生；分类持久化到本地。
+   - 题目：支持用户**手动新增题目**（题干/答案/所属分类/难度等），与 AI 抽取的题目共存；支持编辑/删除。
+   - 数据层：`Question`/分类可能需要"来源"字段区分 `AI` 与 `MANUAL`（手动题不参与相关性重算/去重误删）；分类若独立成表需新 DAO。
+   - UI：题库页提供"新增分类""新增题目"入口与编辑表单。
+6. **简历页改版（预览 + 折叠，去结构化框）**：
+   - 去掉现有"目标岗位""技能"输入框的展示形态。
+   - 上传简历后提供 **ImageView 预览**：PDF 需渲染为位图（`PdfRenderer`）显示；**支持缩放/平移**（双指缩放，可用 Zoomable 组件或自定义 `Modifier`）。
+   - 识别出的文本内容以**可折叠区块**呈现（默认折叠，展开查看 AI 解析出的画像/要点）。
+   - ⚠️ 依赖影响：当前 AI 流水线用 `ResumeProfile.targetRole`（`AnalyzePostWorker` 以 `targetRole` 是否为空作为"是否已配置简历"的门槛）与 `skills` 做相关性上下文。去掉输入框后，需改为**从简历文本 AI 抽取**目标岗位/技能（或允许可选覆盖），并调整 worker 的"已配置"判断，避免导入被误拦。此项与"P3.5 记忆/画像抽取"相关联，实现时一并考虑。
