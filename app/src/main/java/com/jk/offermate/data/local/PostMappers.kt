@@ -44,7 +44,8 @@ object PostMappers {
         relevanceReason = entity.relevanceReason,
         id = entity.id,
         practiced = entity.practiced,
-        source = QuestionSource.from(entity.source)
+        source = QuestionSource.from(entity.source),
+        category = entity.category
     )
 
     private val deduplicator = QuestionDeduplicator()
@@ -65,7 +66,8 @@ object PostMappers {
                 relevanceReason = q.relevanceReason,
                 exactHash = fp.exactHash,
                 simhash = fp.simhash,
-                bucketKey = fp.bucketKey
+                bucketKey = fp.bucketKey,
+                category = q.category
             )
         }
 

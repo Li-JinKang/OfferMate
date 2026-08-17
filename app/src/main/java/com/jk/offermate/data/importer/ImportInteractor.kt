@@ -2,6 +2,8 @@ package com.jk.offermate.data.importer
 
 import com.jk.offermate.data.ai.AiException
 import com.jk.offermate.data.ai.AnalysisPipeline
+import com.jk.offermate.data.ai.AnsweredQuestion
+import com.jk.offermate.data.ai.CategoryClassifier
 import com.jk.offermate.data.ai.ResumeProfile
 import com.jk.offermate.data.ocr.OcrTextRecognizer
 import com.jk.offermate.data.reader.ContentReader
@@ -9,18 +11,23 @@ import com.jk.offermate.data.reader.ExtractionMethod
 import com.jk.offermate.data.reader.ImageFetcher
 import com.jk.offermate.data.reader.PostContent
 import com.jk.offermate.data.reader.ReadResult
+import com.jk.offermate.data.repository.CategoryRepository
+import kotlinx.coroutines.flow.first
 
 /**
  * 导入编排：把"链接读取（P2）"与"AI 分析流水线（P1）"串成一个业务用例。
  *
  * 读取到正文后，若帖子含图片（面经长图），先用端侧 OCR（[ocrRecognizer]）识别图片文字并并入正文，
- * 再走分析流水线。[ocrRecognizer] / [imageFetcher] 为空时跳过 OCR（便于 JVM 单测）。
+ * 再走分析流水线；分析出题目后由 [categoryClassifier] 结合已有分类归类（可新建，写回 [categoryRepository]）。
+ * 可选依赖为空时相应步骤跳过（便于 JVM 单测）。
  */
 class ImportInteractor(
     private val contentReader: ContentReader,
     private val analysisPipeline: AnalysisPipeline,
     private val ocrRecognizer: OcrTextRecognizer? = null,
-    private val imageFetcher: ImageFetcher? = null
+    private val imageFetcher: ImageFetcher? = null,
+    private val categoryClassifier: CategoryClassifier? = null,
+    private val categoryRepository: CategoryRepository? = null
 ) : Importer {
 
     /** 从链接导入：读取正文 →（图片 OCR）→ 分析。读取失败则回退为"需手动粘贴"。 */
@@ -64,8 +71,32 @@ class ImportInteractor(
 
     private suspend fun analyze(content: PostContent, profile: ResumeProfile): ImportResult =
         try {
-            ImportResult.Success(content, analysisPipeline.analyze(content.text, profile))
+            val questions = analysisPipeline.analyze(content.text, profile)
+            ImportResult.Success(content, categorize(questions))
         } catch (e: AiException) {
             ImportResult.Failed(e.message ?: "分析失败")
         }
+
+    /**
+     * 让 LLM 结合"已有分类"为题目归类；新分类写回本地供下次复用。
+     * 未注入分类器时原样返回（UI 会用启发式归并兜底）。分类失败不影响导入结果。
+     */
+    private suspend fun categorize(questions: List<AnsweredQuestion>): List<AnsweredQuestion> {
+        val classifier = categoryClassifier ?: return questions
+        if (questions.isEmpty()) return questions
+
+        val existing = categoryRepository
+            ?.let { runCatching { it.observeCategories().first() }.getOrDefault(emptyList()) }
+            ?: emptyList()
+
+        val categorized = runCatching { classifier.classify(questions, existing) }.getOrDefault(questions)
+
+        categoryRepository?.let { repo ->
+            categorized.map { it.category }
+                .filter { it.isNotBlank() && it !in existing }
+                .distinct()
+                .forEach { runCatching { repo.addCategory(it) } }
+        }
+        return categorized
+    }
 }

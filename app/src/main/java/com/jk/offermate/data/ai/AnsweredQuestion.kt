@@ -40,5 +40,7 @@ data class AnsweredQuestion(
     /** 是否已刷（掌握）。 */
     val practiced: Boolean = false,
     /** 来源：AI 抽取或用户手动添加。 */
-    val source: QuestionSource = QuestionSource.AI
+    val source: QuestionSource = QuestionSource.AI,
+    /** 归属分类（由 LLM 结合已有分类决定，可新建）。为空时回退到本地启发式归并。 */
+    val category: String = ""
 )

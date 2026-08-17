@@ -22,7 +22,7 @@ class QuizCategoryViewModel(
 
     val questions: StateFlow<List<AnsweredQuestion>> =
         questionRepository.observeAll().map { list ->
-            list.filter { (it.tags.firstOrNull()?.takeIf(String::isNotBlank) ?: "其他") == category }
+            list.filter { CategoryCanonicalizer.displayCategory(it) == category }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun togglePracticed(q: AnsweredQuestion) {

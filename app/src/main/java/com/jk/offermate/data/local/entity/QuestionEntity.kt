@@ -31,5 +31,7 @@ data class QuestionEntity(
     /** LSH 分桶键（当前按首个考点标签分区）。 */
     val bucketKey: String = "",
     /** 来源：AI（抽取）或 MANUAL（用户手动添加）。 */
-    val source: String = "AI"
+    val source: String = "AI",
+    /** LLM 归属的分类（可为空，空时 UI 回退到启发式归并）。 */
+    val category: String = ""
 )

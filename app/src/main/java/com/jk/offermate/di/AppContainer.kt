@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.jk.offermate.data.ai.AiClient
 import com.jk.offermate.data.ai.AnalysisPipeline
 import com.jk.offermate.data.ai.AnswerGenerator
+import com.jk.offermate.data.ai.CategoryClassifier
 import com.jk.offermate.data.ai.DeepSeekClient
 import com.jk.offermate.data.ai.QuestionExtractor
 import com.jk.offermate.data.ai.RelevanceMatcher
@@ -152,7 +153,9 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             contentReader = contentReader,
             analysisPipeline = analysisPipeline,
             ocrRecognizer = MlKitTextRecognizer(),
-            imageFetcher = OkHttpImageFetcher()
+            imageFetcher = OkHttpImageFetcher(),
+            categoryClassifier = CategoryClassifier(aiClient),
+            categoryRepository = categoryRepository
         )
     }
 

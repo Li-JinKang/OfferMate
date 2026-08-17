@@ -83,7 +83,8 @@ class RoomQuestionRepository(private val questionDao: QuestionDao) : QuestionRep
                 keyPointsCsv = "",
                 relevanceScore = 100, // 手动题默认置顶
                 relevanceReason = "手动添加",
-                source = QuestionSource.MANUAL.name
+                source = QuestionSource.MANUAL.name,
+                category = tag
             )
         )
     }

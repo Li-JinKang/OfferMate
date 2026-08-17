@@ -272,9 +272,36 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 
 ---
 
+## 已完成 ✅ · 题目分类改为 LLM 决定（不再写死关键词表）
+
+- 动机：写死关键词表(handler→Android 等)不可扩展；应把**已有分类清单**给 LLM，由它决定归属并可**新建**分类。
+- `CategoryClassifier`（`data/ai`，`AiClient`）：`buildMessages(questions, existingCategories)` + `parse`（容错，index→category）+ `classify`；提示词要求优先复用已有类目、必要时新建简洁粗类目、避免过细。
+- `AnsweredQuestion.category` / `QuestionEntity.category`（DB 版本 7→8）；`ImportInteractor` 分析出题后调用分类器（可选注入），新分类写回 `CategoryRepository` 供下次复用。
+- UI 分组：`CategoryCanonicalizer.displayCategory` 优先用 LLM 分类，**仅在为空（旧数据/离线/无 Key）时回退**本地启发式归并。
+- 单测：`CategoryClassifierTest`（prompt/parse/classify/空输入不调用模型）。
+- 注：分类为独立一次结构化调用（清晰、可测），后续如需省调用可并入相关性/作答步骤。
+
+---
+
+## 决策 · Agent/工具框架：自研 vs 成熟框架（评估结论）
+
+- **分类不需要 tool/MCP**，普通结构化调用即可（已落地，见上）。tool/MCP 是更大的独立议题。
+- 现状核对（2026-视角）：
+  - LangChain4j：JDK17+/面向后端(Spring)，Android 支持存疑 → 排除。
+  - MCP Kotlin SDK（官方，JetBrains 共维护，KMP，client+server）→ **仅当需接入外部第三方工具服务器时引入**；本地工具（读简历/列分类）用 function-calling 即可，无需 MCP。
+  - Koog（JetBrains，1.0 稳定，KMP 明确支持 Android，内置 tools/memory/persistence/多 LLM 切换/MCP，另有 koog-edge 端侧推理）→ 覆盖我们规划的 agent/memory/tools。
+- **结论/建议**：
+  1. 本地工具的 function-calling 先用现有薄封装自研（小、可控、Android 友好）。
+  2. 当 agent 逻辑/记忆变复杂时，做一次 **Koog 小样评估**（重点 Android APK 体积/方法数/稳定性 + BYOK OpenAI 兼容接入）；可接受则采用 Koog 承载 agent/memory/tools，**不要从零自研 MCP + agent 编排**。
+  3. 三步分析流水线保持自研（简单可测，不上重框架）。
+  4. 需要外部工具时再引官方 MCP Kotlin SDK（client）。
+
+---
+
 ## 待办 · 工具调用（Function Calling / MCP / Skills）★重点
 
 > 这一部分是架构级能力，**必须重视**，会影响 `AiClient`、分析流水线与记忆系统的设计。
+> 落地路径按上节"决策"：本地工具先自研 function-calling，复杂化后评估 Koog，外部工具用官方 MCP Kotlin SDK。
 
 ### 动机
 当前把整份简历/画像塞进每次 Prompt：成本高、上下文被污染、也不利于"方向切换/多简历"。改为 **Agentic 按需取数**：
