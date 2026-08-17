@@ -91,6 +91,9 @@ dependencies {
     // 简历解析（PDF）
     implementation libs.pdfbox.android
 
+    // 端侧 OCR：ML Kit 中文文字识别（bundled，含拉丁字母/数字，适配中英混排面经）
+    implementation libs.mlkit.text.recognition.chinese
+
     testImplementation libs.junit
     testImplementation libs.okhttp.mockwebserver
     testImplementation libs.kotlinx.coroutines.test
