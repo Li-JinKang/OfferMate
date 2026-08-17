@@ -14,7 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * 纯逻辑的 buildMessages/parse 可用 [FakeAiClient] 单测；classify 做一次 LLM 调用。
  */
-class CategoryClassifier(private val aiClient: AiClient) {
+class CategoryClassifier(private val aiClient: AiClient) : QuestionCategorizer {
 
     fun buildMessages(
         questions: List<AnsweredQuestion>,
@@ -61,7 +61,7 @@ class CategoryClassifier(private val aiClient: AiClient) {
     }
 
     /** 为题目分配分类；分类失败或空输入时原样返回。 */
-    suspend fun classify(
+    override suspend fun categorize(
         questions: List<AnsweredQuestion>,
         existingCategories: List<String>
     ): List<AnsweredQuestion> {

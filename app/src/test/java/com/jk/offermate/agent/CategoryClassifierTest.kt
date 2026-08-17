@@ -33,7 +33,7 @@ class CategoryClassifierTest {
         )
         val classifier = CategoryClassifier(fake)
 
-        val result = classifier.classify(
+        val result = classifier.categorize(
             questions = listOf(q("Handler 原理"), q("TCP 三次握手")),
             existingCategories = listOf("Android")
         )
@@ -54,7 +54,7 @@ class CategoryClassifierTest {
     fun `empty questions returns unchanged without calling model`() = runTest {
         val fake = FakeAiClient.returning("should-not-be-used")
         val classifier = CategoryClassifier(fake)
-        val result = classifier.classify(emptyList(), listOf("Android"))
+        val result = classifier.categorize(emptyList(), listOf("Android"))
         assertTrue(result.isEmpty())
         assertTrue(fake.recordedMessages.isEmpty())
     }

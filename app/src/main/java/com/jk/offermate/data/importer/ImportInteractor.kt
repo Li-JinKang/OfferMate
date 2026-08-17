@@ -1,9 +1,9 @@
 package com.jk.offermate.data.importer
 
 import com.jk.offermate.agent.AiException
-import com.jk.offermate.agent.AnalysisPipeline
 import com.jk.offermate.agent.AnsweredQuestion
-import com.jk.offermate.agent.CategoryClassifier
+import com.jk.offermate.agent.PostAnalyzer
+import com.jk.offermate.agent.QuestionCategorizer
 import com.jk.offermate.agent.ResumeProfile
 import com.jk.offermate.data.ocr.OcrTextRecognizer
 import com.jk.offermate.data.reader.ContentReader
@@ -23,10 +23,10 @@ import kotlinx.coroutines.flow.first
  */
 class ImportInteractor(
     private val contentReader: ContentReader,
-    private val analysisPipeline: AnalysisPipeline,
+    private val analyzer: PostAnalyzer,
     private val ocrRecognizer: OcrTextRecognizer? = null,
     private val imageFetcher: ImageFetcher? = null,
-    private val categoryClassifier: CategoryClassifier? = null,
+    private val categorizer: QuestionCategorizer? = null,
     private val categoryRepository: CategoryRepository? = null
 ) : Importer {
 
@@ -71,7 +71,7 @@ class ImportInteractor(
 
     private suspend fun analyze(content: PostContent, profile: ResumeProfile): ImportResult =
         try {
-            val questions = analysisPipeline.analyze(content.text, profile)
+            val questions = analyzer.analyze(content.text, profile)
             ImportResult.Success(content, categorize(questions))
         } catch (e: AiException) {
             ImportResult.Failed(e.message ?: "分析失败")
@@ -82,14 +82,14 @@ class ImportInteractor(
      * 未注入分类器时原样返回（UI 会用启发式归并兜底）。分类失败不影响导入结果。
      */
     private suspend fun categorize(questions: List<AnsweredQuestion>): List<AnsweredQuestion> {
-        val classifier = categoryClassifier ?: return questions
+        val strategy = categorizer ?: return questions
         if (questions.isEmpty()) return questions
 
         val existing = categoryRepository
             ?.let { runCatching { it.observeCategories().first() }.getOrDefault(emptyList()) }
             ?: emptyList()
 
-        val categorized = runCatching { classifier.classify(questions, existing) }.getOrDefault(questions)
+        val categorized = runCatching { strategy.categorize(questions, existing) }.getOrDefault(questions)
 
         categoryRepository?.let { repo ->
             categorized.map { it.category }

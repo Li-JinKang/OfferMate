@@ -34,7 +34,7 @@ class QuizViewModel(
             questionRepository.observeAll(),
             categoryRepository.observeCategories()
         ) { questions, userCategories ->
-            val groups = questions.groupBy { CategoryCanonicalizer.displayCategory(it) }
+            val groups = questions.groupBy { CategoryResolver.displayCategory(it) }
             val fromQuestions = groups.map { (name, qs) ->
                 CategorySummary(name = name, total = qs.size, practiced = qs.count { it.practiced })
             }

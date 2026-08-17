@@ -151,10 +151,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     override val importInteractor: ImportInteractor by lazy {
         ImportInteractor(
             contentReader = contentReader,
-            analysisPipeline = analysisPipeline,
+            analyzer = analysisPipeline,
             ocrRecognizer = MlKitTextRecognizer(),
             imageFetcher = OkHttpImageFetcher(),
-            categoryClassifier = CategoryClassifier(aiClient),
+            categorizer = CategoryClassifier(aiClient),
             categoryRepository = categoryRepository
         )
     }
