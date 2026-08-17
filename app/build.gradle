@@ -94,6 +94,9 @@ dependencies {
     // 端侧 OCR：ML Kit 中文文字识别（bundled，含拉丁字母/数字，适配中英混排面经）
     implementation libs.mlkit.text.recognition.chinese
 
+    // Markdown 渲染（Markwon 内核，支持代码块/表格/任务列表等）
+    implementation libs.compose.markdown
+
     testImplementation libs.junit
     testImplementation libs.okhttp.mockwebserver
     testImplementation libs.kotlinx.coroutines.test
