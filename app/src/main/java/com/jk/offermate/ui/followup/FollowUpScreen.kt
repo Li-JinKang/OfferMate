@@ -244,25 +244,21 @@ fun FollowUpScreen(
 
 @Composable
 private fun MessageBubble(message: ChatMessage) {
-    val isUser = message.role == Role.USER
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-    ) {
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isUser) IndigoContainer else CardSurface
-            ),
-            modifier = Modifier.widthIn(max = 300.dp)
-        ) {
-            Box(Modifier.padding(12.dp)) {
-                if (isUser) {
+    if (message.role == Role.USER) {
+        // 用户消息：右对齐气泡
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = IndigoContainer),
+                modifier = Modifier.widthIn(max = 300.dp)
+            ) {
+                Box(Modifier.padding(12.dp)) {
                     Text(message.content, color = OnIndigoContainer, style = MaterialTheme.typography.bodyMedium)
-                } else {
-                    MarkdownText(message.content)
                 }
             }
         }
+    } else {
+        // AI 回答：铺满整屏、无气泡，Markdown 直接渲染（标题/列表/代码块/表格）
+        MarkdownText(message.content, modifier = Modifier.fillMaxWidth())
     }
 }
