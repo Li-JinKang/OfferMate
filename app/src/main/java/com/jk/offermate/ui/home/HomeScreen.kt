@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -41,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,6 +59,8 @@ import com.jk.offermate.ui.theme.BadgeHotBg
 import com.jk.offermate.ui.theme.BadgeHotText
 import com.jk.offermate.ui.theme.BadgeMatchBg
 import com.jk.offermate.ui.theme.BadgeMatchText
+import com.jk.offermate.ui.theme.FieldFill
+import com.jk.offermate.ui.theme.TextPrimary
 import com.jk.offermate.ui.theme.NowcoderGreen
 import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextSecondary
@@ -234,43 +240,61 @@ private fun ImportCard(
     onExtract: () -> Unit,
     onToggleManualPaste: () -> Unit
 ) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "一键解析面经帖子",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f)
-                )
-                PillTag("牛客", BadgeHotText, BadgeHotBg)
-                Spacer(Modifier.size(8.dp))
-                PillTag("小红书", XiaohongshuRed, Color(0x14FF2E4D))
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = linkInput,
-                    onValueChange = onLinkChange,
-                    placeholder = { Text("粘贴面经链接…") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.size(8.dp))
-                Button(
-                    onClick = onExtract,
-                    enabled = linkInput.isNotBlank(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("提取")
+    // 容器与背景同色（不再是独立白卡）
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // 链接输入：与搜索框一致的轻量圆角胶囊
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(FieldFill)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.weight(1f)) {
+                    if (linkInput.isEmpty()) {
+                        Text("粘贴面经链接…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    }
+                    BasicTextField(
+                        value = linkInput,
+                        onValueChange = onLinkChange,
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            color = TextPrimary,
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
-            TextButton(onClick = onToggleManualPaste) {
-                Text("读取失败？手动粘贴正文")
+            Spacer(Modifier.size(8.dp))
+            Button(
+                onClick = onExtract,
+                enabled = linkInput.isNotBlank(),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Text("提取")
             }
+        }
+        Spacer(Modifier.height(8.dp))
+        // “读取失败”一行，右侧放平台标识
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "读取失败？手动粘贴正文",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onToggleManualPaste)
+                    .padding(vertical = 4.dp)
+            )
+            Spacer(Modifier.weight(1f))
+            PillTag("牛客", BadgeHotText, BadgeHotBg)
+            Spacer(Modifier.size(6.dp))
+            PillTag("小红书", XiaohongshuRed, Color(0x14FF2E4D))
         }
     }
 }

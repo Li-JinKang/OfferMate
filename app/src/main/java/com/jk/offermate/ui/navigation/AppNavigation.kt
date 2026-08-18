@@ -25,7 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,7 +44,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.aichat.AiChatRoute
-import com.jk.offermate.ui.followup.FollowUpRoute
 import com.jk.offermate.ui.home.HomeRoute
 import com.jk.offermate.ui.profile.ProfileRoute
 import com.jk.offermate.ui.questions.QuestionsRoute
@@ -59,6 +60,9 @@ fun OfferMateApp(
     onSharedTextConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
+
+    // 从帖子/题目卡片“追问”跳转到 AI 对话 Tab 时携带的题目 id（一次性）
+    var pendingChatQuestionId by remember { mutableStateOf<String?>(null) }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -113,7 +117,11 @@ fun OfferMateApp(
                 )
             }
             composable(Screen.AiChat.route) {
-                AiChatRoute(container = container)
+                AiChatRoute(
+                    container = container,
+                    pendingQuestionId = pendingChatQuestionId,
+                    onPendingConsumed = { pendingChatQuestionId = null }
+                )
             }
             composable(Screen.Settings.route) {
                 ProfileRoute(container, onBack = { navController.popBackStack() })
@@ -126,19 +134,15 @@ fun OfferMateApp(
                     container = container,
                     postId = entry.arguments?.getString("postId").orEmpty(),
                     onBack = { navController.popBackStack() },
+                    // 追问不再单独维护对话页：携带题目 id 跳到 AI 对话 Tab
                     onFollowUp = { questionId ->
-                        navController.navigate("followup/${android.net.Uri.encode(questionId)}")
+                        pendingChatQuestionId = questionId
+                        navController.navigate(Screen.AiChat.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
-                )
-            }
-            composable(
-                route = "followup/{questionId}",
-                arguments = listOf(navArgument("questionId") { type = NavType.StringType })
-            ) { entry ->
-                FollowUpRoute(
-                    container = container,
-                    questionId = entry.arguments?.getString("questionId").orEmpty(),
-                    onBack = { navController.popBackStack() }
                 )
             }
         }

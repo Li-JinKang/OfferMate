@@ -57,13 +57,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.Role
 import com.jk.offermate.data.local.entity.ConversationEntity
-import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.MarkdownText
 import com.jk.offermate.ui.theme.Indigo
 import com.jk.offermate.ui.theme.IndigoContainer
@@ -76,43 +73,6 @@ import kotlinx.coroutines.launch
 // 输入区/气泡的局部配色，贴近设计稿
 private val InputBarBg = Color(0xFFF2F3F7)
 private val UserBubble = Color(0xFFECECFE)
-
-@Composable
-fun FollowUpRoute(container: AppContainer, questionId: String, onBack: () -> Unit) {
-    val viewModel: FollowUpViewModel = viewModel(
-        factory = FollowUpViewModel.provideFactory(
-            questionId = questionId,
-            questionRepository = container.questionRepository,
-            conversationRepository = container.conversationRepository,
-            followUpService = container.followUpService,
-            resumeRepository = container.resumeRepository
-        )
-    )
-    val question by viewModel.question.collectAsStateWithLifecycle()
-    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
-    val activeConversationId by viewModel.activeConversationId.collectAsStateWithLifecycle()
-    val messages by viewModel.messages.collectAsStateWithLifecycle()
-    val sending by viewModel.sending.collectAsStateWithLifecycle()
-    val error by viewModel.error.collectAsStateWithLifecycle()
-    val notice by viewModel.notice.collectAsStateWithLifecycle()
-
-    FollowUpScreen(
-        question = question,
-        conversations = conversations,
-        activeConversationId = activeConversationId,
-        messages = messages,
-        sending = sending,
-        error = error,
-        notice = notice,
-        onBack = onBack,
-        onSend = viewModel::send,
-        onUpdateAnswer = viewModel::updateAnswerFromDiscussion,
-        onNewSession = viewModel::startNewSession,
-        onSwitchSession = viewModel::switchToConversation,
-        onConsumeError = viewModel::consumeError,
-        onConsumeNotice = viewModel::consumeNotice
-    )
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

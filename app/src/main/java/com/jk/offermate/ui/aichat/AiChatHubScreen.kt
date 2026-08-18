@@ -55,11 +55,17 @@ import com.jk.offermate.ui.followup.FollowUpViewModel
 import com.jk.offermate.ui.quiz.categoryColor
 import com.jk.offermate.ui.theme.TextPrimary
 import com.jk.offermate.ui.theme.TextSecondary
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AiChatRoute(container: AppContainer) {
+fun AiChatRoute(
+    container: AppContainer,
+    /** 由“追问”携带进来的题目 id：进入后自动就该题打开/新建对话。 */
+    pendingQuestionId: String? = null,
+    onPendingConsumed: () -> Unit = {}
+) {
     val viewModel: AiChatViewModel = viewModel(
         factory = AiChatViewModel.provideFactory(
             container.questionRepository,
@@ -75,6 +81,17 @@ fun AiChatRoute(container: AppContainer) {
     var activeQuestionId by rememberSaveable { mutableStateOf<String?>(null) }
     var activeConversationId by rememberSaveable { mutableStateOf<String?>(null) }
     var seeded by rememberSaveable { mutableStateOf(false) }
+
+    // “追问”跳转：就该题打开/新建会话并置为当前
+    LaunchedEffect(pendingQuestionId) {
+        val qId = pendingQuestionId ?: return@LaunchedEffect
+        val q = container.questionRepository.observeById(qId).first()
+        val convId = container.conversationRepository.getOrCreateForQuestion(qId, q?.question.orEmpty())
+        activeQuestionId = qId
+        activeConversationId = convId
+        seeded = true
+        onPendingConsumed()
+    }
 
     LaunchedEffect(state.latest) {
         if (!seeded && activeConversationId == null) {

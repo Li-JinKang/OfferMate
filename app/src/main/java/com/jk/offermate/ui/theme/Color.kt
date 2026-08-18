@@ -14,6 +14,8 @@ val CardSurface = Color(0xFFFFFFFF)
 val TextPrimary = Color(0xFF1B1D28)
 val TextSecondary = Color(0xFF8A8F9C)
 val OutlineSoft = Color(0xFFE6E8EF)
+// 输入/搜索框的浅填充（比背景略深，做出轻盈的凹陷胶囊感）
+val FieldFill = Color(0xFFEDEEF3)
 
 // 平台标识色
 val NowcoderGreen = Color(0xFF17B26A)

@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.jk.offermate.ui.theme.FieldFill
 import com.jk.offermate.ui.theme.TextPrimary
 import com.jk.offermate.ui.theme.TextSecondary
 
@@ -45,7 +46,7 @@ fun SearchField(
             .fillMaxWidth()
             .heightIn(min = 44.dp)
             .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(FieldFill)
             .padding(start = 14.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
