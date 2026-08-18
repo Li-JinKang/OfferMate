@@ -35,6 +35,8 @@ import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.markdownAnimations
+import com.mikepenz.markdown.model.rememberMarkdownState
 
 private val CodeBackground = Color(0xFFF6F7FB)
 
@@ -48,14 +50,19 @@ private val CodeBackground = Color(0xFFF6F7FB)
  */
 @Composable
 fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
+    // immediate = true：在组合期间同步完成解析，首帧即为 Success，
+    // 避免库默认的异步解析先渲染 Loading（空白）再渲染内容导致的“闪一下/渲染两次”。
+    val markdownState = rememberMarkdownState(markdown, immediate = true)
     Markdown(
-        content = markdown,
+        markdownState = markdownState,
         modifier = modifier,
         colors = markdownColor(
             text = TextPrimary,
             linkText = Indigo
         ),
         typography = chatMarkdownTypography(),
+        // 关闭默认的 animateContentSize，内容更新（如流式）时不做尺寸动画，避免抖动。
+        animations = markdownAnimations(animateTextSize = { this }),
         components = markdownComponents(
             // 注意：it.content 是整篇 Markdown 全文，需用节点偏移切出当前代码块文本
             codeFence = { CodeCard(nodeText(it.content, it.node)) },

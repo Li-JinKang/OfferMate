@@ -188,13 +188,6 @@ private fun QuizHeader(
             .padding(horizontal = 16.dp)
             .padding(top = 12.dp, bottom = 4.dp)
     ) {
-        Text(
-            "题库",
-            style = MaterialTheme.typography.labelLarge,
-            color = TextSecondary
-        )
-        Spacer(Modifier.height(10.dp))
-
         // 下一个要刷题目卡片
         Surface(
             shape = RoundedCornerShape(20.dp),

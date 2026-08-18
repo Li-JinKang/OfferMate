@@ -114,8 +114,6 @@ fun ProfileScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("我的", style = MaterialTheme.typography.titleLarge)
-
         val resumeSubtitle = if (profile.rawText.isBlank()) "未上传" else "已上传"
         ExpandableCard(title = "我的简历", subtitle = resumeSubtitle) {
             ResumeContent(profile, resumeFilePath, resumeLoading, resumeError, onPickPdf, onSaveRawText, onConsumeError)

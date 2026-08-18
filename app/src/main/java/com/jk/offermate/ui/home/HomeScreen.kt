@@ -19,9 +19,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -113,6 +116,13 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
+            HomeHeader(
+                postCount = state.posts.size,
+                questionCount = state.posts.sumOf { it.parsedQuestionCount }
+            )
+        }
+
+        item {
             ImportCard(
                 linkInput = state.linkInput,
                 onLinkChange = onLinkChange,
@@ -149,6 +159,53 @@ fun HomeScreen(
                     PostCard(post = post, onOpen = { onOpenPost(post) })
                 }
             }
+        }
+    }
+}
+
+/**
+ * 首页头部：主标题「面经」+ 一行统计副标题 + 右侧圆形搜索按钮（搜索暂为占位）。
+ */
+@Composable
+private fun HomeHeader(
+    postCount: Int,
+    questionCount: Int
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "面经",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = if (postCount == 0) {
+                    "粘贴链接，开始收录你的第一篇面经"
+                } else {
+                    "已收录 $postCount 篇 · 解析 $questionCount 题"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+        }
+        Spacer(Modifier.size(12.dp))
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .clickable { /* TODO: 搜索功能待实现 */ },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.Search,
+                contentDescription = "搜索",
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
