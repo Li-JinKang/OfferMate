@@ -80,7 +80,7 @@
 - [x] `ContentReaderTest`：静态成功 / 短链展开后抓取 / WebView 兜底 / 手动粘贴 的降级决策正确。
 
 ### P2.4 WebView 动态读取适配器（设备侧，后置）
-- [ ] 通用 `WebViewContentReader`：离屏 WebView 加载 URL，`onPageFinished` 后注入 `readability.js`（assets）提取正文；超时兜底 `document.body.innerText`。
+- [x] 通用 `WebViewContentReader`：离屏 WebView 加载 URL（真实 UA + 执行 JS，自然跟随短链跳转），`onPageFinished` 后轮询取渲染后 DOM（`evaluateJavascript` 取 `outerHTML`），复用已测的 `HtmlContentExtractor`（内部按需走 `XhsNoteExtractor` 解析 `__INITIAL_STATE__` 或 Readability/Jsoup 兜底），未注入独立 `readability.js`；超时兜底走手动粘贴。已接入 `AppContainer`。
 - [x] 小红书正文提取（静态方案，见 [`xhs-reading.md`](./xhs-reading.md) 第 7 节）：
   - [x] `XhsNoteExtractor`（纯函数）从静态 HTML 的 `__INITIAL_STATE__` 提取笔记 title/desc、去评论/推荐噪声 + JVM 单测；已用真实链接验证。
   - [x] 接入 `HtmlContentExtractor`（小红书域名优先，失败回退 Readability/手动粘贴）。
@@ -148,12 +148,12 @@
 - [x] 架构骨架：`AppContainer`(手动DI) + `PostRepository` 接口 + `FakePostRepository` + MVVM(`HomeViewModel`/`HomeUiState`/单向数据流) + 首页 UI（导入卡片/来源筛选/帖子卡片，贴合设计稿）。
 
 ### P4.2 导入与后台运行（重点）
-- [ ] 导入页：接收 `ACTION_SEND`(text/plain) 分享链接 + 手动粘贴链接/正文入口。
-- [ ] **分享即入队、立即可退出**：落库 `ImportedPost(status=PENDING)` 并提交 `WorkManager`。
-- [ ] **WorkManager 链式任务** `ReadWork → AnalyzeWork`：网络约束 + 指数退避重试；进程/重启后可恢复。
-- [ ] **前台服务 + 进度通知**（expedited + setForeground）；完成后本地通知直达题目列表。
-- [ ] 导入任务**状态机**与导入列表状态展示、失败重试 / 转手动粘贴。
-- [ ] 入队前校验 DeepSeek Key，无 Key 引导去设置。
+- [x] 导入页：接收 `ACTION_SEND`(text/plain) 分享链接 + 手动粘贴链接/正文入口。（`MainActivity` 声明 intent-filter + 解析 `EXTRA_TEXT`；`ShareIntentParser` 从分享文本中抽取链接（纯函数，JVM 单测）；抽不到链接则整段文本走手动粘贴正文路径；`HomeViewModel.onSharedTextReceived` 复用现有 `enqueueUrl`/`enqueueText`）
+- [x] **分享即入队、立即可退出**：落库 `ImportedPost(status=PENDING)` 并提交 `WorkManager`。（`WorkManagerImportScheduler`/`PostStore.createPending`）
+- [x] **WorkManager 后台任务**：`AnalyzePostWorker`（单 worker 内完成读取+分析，非文档最初设想的 `ReadWork→AnalyzeWork` 两阶段链，但功能等价）+ 网络约束 + 指数退避重试；进程/重启后可恢复。
+- [x] **前台服务 + 进度通知**（`setForeground` + `ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC`）；完成后本地通知直达题目列表。
+- [x] 导入任务**状态机**（`ImportStatus`）与导入列表状态展示、`NEEDS_MANUAL_INPUT` 转手动粘贴。
+- [ ] 入队前校验 DeepSeek Key，无 Key 引导去设置（目前仅校验"是否已配置简历"，未校验 Key；待办）。
 
 ### P4.3 简历与结果
 - [ ] 简历页：SAF 选文件导入 PDF/纯文本，端侧解析为 `ResumeProfile`（PdfBox-Android；DOCX/OCR 二期）。
@@ -225,13 +225,14 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 
 ### 现象与结论（已确认）
 - 现网日志：`NEEDS_MANUAL resolved=https://xhslink.cn/o/6Gz0nDGZxAE reason=短链未能展开为真实地址（网络异常或被平台风控）` —— **展开后 `resolved` 仍是短链**，说明 `OkHttpUrlResolver.resolve()` 在设备网络下未成功跟随重定向（`runCatching{}.getOrDefault(rawUrl)` 把异常/拦截吞掉后回退原短链）。
-- 同一条链接在 `LiveLinkReadingTest`（JVM/测试机）能展开并读到正文：说明是**环境差异**（IP/风控/时效 `xsec_token`），非逻辑差异。生产 `ContentReader` 的 `dynamicReader = null`，只有脆弱的静态抓取。
+- 同一条链接在 `LiveLinkReadingTest`（JVM/测试机）能展开并读到正文：说明是**环境差异**（IP/风控/时效 `xsec_token`），非逻辑差异。
 - 已做的小改进 ✅：`ContentReader` 按卡点输出可诊断原因（短链未展开 / 抓取失败 / 抓到但无正文），并加 `ContentReaderTest` 覆盖。
 
-### 待办 · WebView 离屏渲染读取（P2.4 落地，修根因）
-- [ ] `WebViewContentReader : DynamicContentReader`：离屏 `WebView`（真实浏览器 UA + Cookie + 执行 JS）加载展开后的页面，`onPageFinished` 后注入 JS 取 `window.__INITIAL_STATE__`（小红书正文）或 `document.body.innerText`（牛客/通用），超时兜底。
-- [ ] 短链展开也交由 WebView 自然跳转拿最终 URL，解决"短链未展开"。
-- [ ] 接入 `AppContainer`（`dynamicReader = WebViewContentReader(...)`）。纯逻辑（脚本文本处理/结果判定）单测；渲染真机验证。
+### 已完成 ✅ · WebView 离屏渲染读取（P2.4 落地，修根因）
+- `WebViewContentReader : DynamicContentReader`：离屏 `WebView`（真实浏览器 UA + 执行 JS）加载展开后的页面，`onPageFinished` 后轮询取渲染后 DOM，复用已测的 `HtmlContentExtractor` 解析（内部按域名走 `XhsNoteExtractor`/`__INITIAL_STATE__` 或 Readability/Jsoup），超时兜底手动粘贴。
+- 短链展开交由 WebView 自然跳转拿最终 URL，缓解"短链未展开"问题。
+- 已接入 `AppContainer`（`dynamicReader = WebViewContentReader(context, htmlContentExtractor)`），生产环境不再是 `null`。
+- ⚠️ 待验证：真机渲染表现（网络/风控环境差异）；`WebViewContentReader` 自身仅做手动/真机验证，未纳入 JVM 单测门槛（符合原计划）。
 
 ### 待办 · 图片面经 OCR（图片转文字）
 背景：牛客/小红书大量面经以**长图**发布，纯文本读取拿不到题目（现网案例：正文只有话题标签，题目全在图里）。
@@ -366,13 +367,14 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
    - 单测：TokenEstimator/ChatMemory/ContextAssembler/FollowUpService/ConversationRepository 全绿。
 2. **答案分点 + Markdown**：`AnswerGenerator` 产出**分点**答案；题目卡片答案用 **Markdown 渲染**（候选：compose-richtext / Markwon / 自研轻量渲染）。
 3. **需调研后落地**（统一调研，关联 memory.md）：
-   - AI 记忆机制（三层记忆、语义事实、方向切换）。
+   - AI 记忆机制（三层记忆、语义事实、方向切换）——仍未开始，见 P3.5.1。
    - 题目相似**去重**（SimHash/LSH 分桶，增量不扫全表）。
    - **简历更新 → 相关度连锁重算**：简历/职业档案变更后，对已有题目重新评估相关性并更新，避免全量重跑的高成本。
-   - **会话管理**（多会话持久化、上下文窗口、摘要记忆）。
+   - ~~**会话管理**（多会话持久化）~~ ✅ 已完成（基础版）：原"一题一会话"（`questionId` 唯一索引）改为一题可开**多轮独立会话**；`ConversationRepository` 新增 `createNewForQuestion`/`observeConversationsForQuestion`；`FollowUpScreen` 加会话切换条（"第 N 轮" + "新开一轮"），默认续上最近更新的会话。DB 版本 8→9。上下文窗口裁剪/摘要记忆仍是现状（`TokenWindowMemory`），未做跨会话摘要。
 4. **题库拼图增强**：
    - 更丰富的配色（扩充调色板 / 按分类稳定取色 / 渐变）。
    - 支持**拖拽排序**（自定义顺序持久化到本地）。
+6. ~~**简历预览区缩放/拖拽越界**~~ ✅ 已完成：`ZoomableImage` 缩放范围维持 1x~5x；新增按缩放倍数计算的可拖拽边界（不能无限拖走内容），拖到边界后剩余手势通过 `NestedScrollDispatcher` 转发给外层 `verticalScroll`，未放大时单指拖动整段转发给外层，解决"拖到底部无法带动外层滚动"的问题。
 5. ~~**用户自定义分类与题目**~~ ✅ 已完成
    - 分类：`CategoryEntity`/`CategoryDao`/`RoomCategoryRepository`，支持手动新增/删除分类（可先建空分类）；题库总览 `QuizViewModel` 合并"标签派生分类 + 用户分类"，空分类显示 0/0。
    - 题目：`QuestionRepository.addManualQuestion`（id=`manual_UUID`、`source=MANUAL`、relevanceScore=100 置顶），与 AI 题共存；分类页对手动题提供"删除"（`QuestionEntity.source` + `AnsweredQuestion.source` 区分 AI/MANUAL）。

@@ -5,11 +5,12 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * 一次会话。当前用于"题目追问"：每道题对应一个会话（[questionId] 唯一）。
+ * 一次会话。用于"题目追问"：一道题可以有多轮独立会话（[questionId] 非唯一），
+ * 便于用户就同一道题从不同角度分别展开讨论，互不干扰历史上下文。
  */
 @Entity(
     tableName = "conversation",
-    indices = [Index(value = ["questionId"], unique = true)]
+    indices = [Index(value = ["questionId"])]
 )
 data class ConversationEntity(
     @PrimaryKey val id: String,

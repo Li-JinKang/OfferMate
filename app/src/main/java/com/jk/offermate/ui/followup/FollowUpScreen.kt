@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -29,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,11 +49,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.Role
+import com.jk.offermate.data.local.entity.ConversationEntity
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.MarkdownText
 import com.jk.offermate.ui.theme.CardSurface
 import com.jk.offermate.ui.theme.IndigoContainer
 import com.jk.offermate.ui.theme.OnIndigoContainer
+import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextSecondary
 
 @Composable
@@ -63,6 +70,8 @@ fun FollowUpRoute(container: AppContainer, questionId: String, onBack: () -> Uni
         )
     )
     val question by viewModel.question.collectAsStateWithLifecycle()
+    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+    val activeConversationId by viewModel.activeConversationId.collectAsStateWithLifecycle()
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
@@ -70,6 +79,8 @@ fun FollowUpRoute(container: AppContainer, questionId: String, onBack: () -> Uni
 
     FollowUpScreen(
         question = question,
+        conversations = conversations,
+        activeConversationId = activeConversationId,
         messages = messages,
         sending = sending,
         error = error,
@@ -77,6 +88,8 @@ fun FollowUpRoute(container: AppContainer, questionId: String, onBack: () -> Uni
         onBack = onBack,
         onSend = viewModel::send,
         onUpdateAnswer = viewModel::updateAnswerFromDiscussion,
+        onNewSession = viewModel::startNewSession,
+        onSwitchSession = viewModel::switchToConversation,
         onConsumeError = viewModel::consumeError,
         onConsumeNotice = viewModel::consumeNotice
     )
@@ -85,6 +98,8 @@ fun FollowUpRoute(container: AppContainer, questionId: String, onBack: () -> Uni
 @Composable
 fun FollowUpScreen(
     question: AnsweredQuestion?,
+    conversations: List<ConversationEntity> = emptyList(),
+    activeConversationId: String? = null,
     messages: List<ChatMessage>,
     sending: Boolean,
     error: String?,
@@ -92,6 +107,8 @@ fun FollowUpScreen(
     onBack: () -> Unit,
     onSend: (String) -> Unit,
     onUpdateAnswer: () -> Unit,
+    onNewSession: () -> Unit = {},
+    onSwitchSession: (String) -> Unit = {},
     onConsumeError: () -> Unit,
     onConsumeNotice: () -> Unit
 ) {
@@ -140,6 +157,17 @@ fun FollowUpScreen(
                     }
                 }
             }
+        }
+
+        // 会话切换器：一道题可以有多轮独立讨论，横向切换 + 新开一轮
+        if (conversations.size > 1 || activeConversationId != null) {
+            SessionSwitcherRow(
+                conversations = conversations,
+                activeConversationId = activeConversationId,
+                enabled = !sending,
+                onSwitchSession = onSwitchSession,
+                onNewSession = onNewSession
+            )
         }
 
         // 会话消息
@@ -237,6 +265,54 @@ fun FollowUpScreen(
                 enabled = !sending && input.isNotBlank()
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SessionSwitcherRow(
+    conversations: List<ConversationEntity>,
+    activeConversationId: String?,
+    enabled: Boolean,
+    onSwitchSession: (String) -> Unit,
+    onNewSession: () -> Unit
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        itemsIndexed(conversations) { index, conversation ->
+            val selected = conversation.id == activeConversationId
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (selected) IndigoContainer else MaterialTheme.colorScheme.surface,
+                border = if (selected) null else androidx.compose.foundation.BorderStroke(1.dp, OutlineSoft),
+                modifier = Modifier.clickable(enabled = enabled) { onSwitchSession(conversation.id) }
+            ) {
+                Text(
+                    text = "第 ${index + 1} 轮",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) OnIndigoContainer else TextSecondary,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
+        }
+        item {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = androidx.compose.foundation.BorderStroke(1.dp, OutlineSoft),
+                modifier = Modifier.clickable(enabled = enabled, onClick = onNewSession)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "新开一轮", modifier = Modifier.height(16.dp))
+                    Spacer(Modifier.widthIn(min = 4.dp))
+                    Text("新开一轮", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+                }
             }
         }
     }

@@ -22,8 +22,15 @@ class ConversationRepositoryTest {
         val messages = MutableStateFlow<List<ChatMessageEntity>>(emptyList())
         private var autoId = 1L
 
-        override suspend fun findByQuestionId(questionId: String): ConversationEntity? =
-            conversations.value.values.firstOrNull { it.questionId == questionId }
+        override suspend fun findLatestByQuestionId(questionId: String): ConversationEntity? =
+            conversations.value.values
+                .filter { it.questionId == questionId }
+                .maxByOrNull { it.updatedAt }
+
+        override fun observeAllByQuestionId(questionId: String): Flow<List<ConversationEntity>> =
+            conversations.map { map ->
+                map.values.filter { it.questionId == questionId }.sortedBy { it.createdAt }
+            }
 
         override suspend fun insert(conversation: ConversationEntity) {
             conversations.value = conversations.value + (conversation.id to conversation)
@@ -98,7 +105,40 @@ class ConversationRepositoryTest {
 
         repo.clear(id)
 
-        assertNull(dao.findByQuestionId("q1"))
+        assertNull(dao.findLatestByQuestionId("q1"))
         assertTrue(repo.history(id).isEmpty())
+    }
+
+    @Test
+    fun `createNewForQuestion always starts a fresh session`() = runTest {
+        val id1 = repo.getOrCreateForQuestion("q1", "标题")
+        val id2 = repo.createNewForQuestion("q1", "标题")
+
+        assertNotEquals(id1, id2)
+        val all = repo.observeConversationsForQuestion("q1").first()
+        assertEquals(2, all.size)
+    }
+
+    @Test
+    fun `getOrCreateForQuestion reuses the most recently updated session`() = runTest {
+        val id1 = repo.getOrCreateForQuestion("q1", "标题")
+        clock = 200L
+        val id2 = repo.createNewForQuestion("q1", "标题")
+        clock = 300L
+        repo.append(id1, Role.USER, "hi") // 让 id1 变为最近更新的会话
+
+        val reused = repo.getOrCreateForQuestion("q1", "标题")
+        assertEquals(id1, reused)
+        assertNotEquals(id2, reused)
+    }
+
+    @Test
+    fun `observeConversationsForQuestion orders by creation time`() = runTest {
+        val id1 = repo.getOrCreateForQuestion("q1", "第一轮")
+        clock = 200L
+        val id2 = repo.createNewForQuestion("q1", "第二轮")
+
+        val all = repo.observeConversationsForQuestion("q1").first()
+        assertEquals(listOf(id1, id2), all.map { it.id })
     }
 }

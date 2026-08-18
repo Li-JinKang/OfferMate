@@ -23,7 +23,7 @@ import com.jk.offermate.data.local.entity.QuestionEntity
         ChatMessageEntity::class,
         CategoryEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class OfferMateDatabase : RoomDatabase() {

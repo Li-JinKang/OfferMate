@@ -9,6 +9,7 @@ import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.Role
 import com.jk.offermate.agent.chat.FollowUpService
 import com.jk.offermate.agent.chat.QuestionContext
+import com.jk.offermate.data.local.entity.ConversationEntity
 import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
 import com.jk.offermate.data.resume.ResumeRepository
@@ -44,6 +45,17 @@ class FollowUpViewModel(
         )
 
     private val conversationId = MutableStateFlow<String?>(null)
+
+    /** 该题下所有的追问会话（多轮讨论），用于会话切换器 UI。 */
+    val conversations: StateFlow<List<ConversationEntity>> =
+        conversationRepository.observeConversationsForQuestion(questionId).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    /** 当前展示中的会话 id（用于让 UI 高亮选中的会话）。 */
+    val activeConversationId: StateFlow<String?> = conversationId.asStateFlow()
 
     val messages: StateFlow<List<ChatMessage>> =
         conversationId
@@ -124,6 +136,21 @@ class FollowUpViewModel(
                 _sending.value = false
             }
         }
+    }
+
+    /** 另起一轮新的追问会话（不影响历史会话，可通过会话切换器随时切回去）。 */
+    fun startNewSession() {
+        if (_sending.value) return
+        viewModelScope.launch {
+            val q = question.filterNotNull().first()
+            conversationId.value = conversationRepository.createNewForQuestion(questionId, q.question)
+        }
+    }
+
+    /** 切换到指定的历史会话。 */
+    fun switchToConversation(id: String) {
+        if (_sending.value) return
+        conversationId.value = id
     }
 
     fun consumeError() { _error.value = null }

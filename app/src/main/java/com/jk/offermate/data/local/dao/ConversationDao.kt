@@ -11,8 +11,11 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ConversationDao {
 
-    @Query("SELECT * FROM conversation WHERE questionId = :questionId LIMIT 1")
-    suspend fun findByQuestionId(questionId: String): ConversationEntity?
+    @Query("SELECT * FROM conversation WHERE questionId = :questionId ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun findLatestByQuestionId(questionId: String): ConversationEntity?
+
+    @Query("SELECT * FROM conversation WHERE questionId = :questionId ORDER BY createdAt ASC")
+    fun observeAllByQuestionId(questionId: String): Flow<List<ConversationEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(conversation: ConversationEntity)

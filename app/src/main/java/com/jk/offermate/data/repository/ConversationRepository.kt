@@ -13,8 +13,14 @@ import java.util.UUID
  * 会话仓库：会话 CRUD、追加消息、加载上下文。全部本地持久化。
  */
 interface ConversationRepository {
-    /** 取得（或创建）某道题对应的会话，返回会话 id。 */
+    /** 取得某道题最近一次会话；不存在则新建一个，返回会话 id。 */
     suspend fun getOrCreateForQuestion(questionId: String, title: String): String
+
+    /** 为某道题另起一轮新会话（不复用已有会话），返回新会话 id。 */
+    suspend fun createNewForQuestion(questionId: String, title: String): String
+
+    /** 观察某道题下的所有会话（按创建时间升序，用于会话切换器 UI）。 */
+    fun observeConversationsForQuestion(questionId: String): Flow<List<ConversationEntity>>
 
     /** 观察某会话的消息（用于 UI）。 */
     fun observeMessages(conversationId: String): Flow<List<ChatMessage>>
@@ -35,7 +41,11 @@ class RoomConversationRepository(
 ) : ConversationRepository {
 
     override suspend fun getOrCreateForQuestion(questionId: String, title: String): String {
-        dao.findByQuestionId(questionId)?.let { return it.id }
+        dao.findLatestByQuestionId(questionId)?.let { return it.id }
+        return createNewForQuestion(questionId, title)
+    }
+
+    override suspend fun createNewForQuestion(questionId: String, title: String): String {
         val id = UUID.randomUUID().toString()
         val ts = now()
         dao.insert(
@@ -49,6 +59,9 @@ class RoomConversationRepository(
         )
         return id
     }
+
+    override fun observeConversationsForQuestion(questionId: String): Flow<List<ConversationEntity>> =
+        dao.observeAllByQuestionId(questionId)
 
     override fun observeMessages(conversationId: String): Flow<List<ChatMessage>> =
         dao.observeMessages(conversationId).map { list -> list.map(::toDomain) }
