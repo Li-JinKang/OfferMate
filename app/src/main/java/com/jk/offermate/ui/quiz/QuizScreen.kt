@@ -13,10 +13,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -31,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,7 +73,10 @@ fun QuizRoute(container: AppContainer, onOpenCategory: (String) -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     QuizOverviewScreen(
         categories = state.categories,
+        // TODO: 待“下一个要刷题目”功能实现后，从 ViewModel 提供真实数据
+        nextQuestion = null,
         onOpenCategory = onOpenCategory,
+        onStartNext = { /* TODO: 跳转到下一个要刷的题目 */ },
         onAddCategory = viewModel::addCategory,
         onAddQuestion = viewModel::addManualQuestion
     )
@@ -72,7 +85,9 @@ fun QuizRoute(container: AppContainer, onOpenCategory: (String) -> Unit) {
 @Composable
 fun QuizOverviewScreen(
     categories: List<CategorySummary>,
+    nextQuestion: String?,
     onOpenCategory: (String) -> Unit,
+    onStartNext: () -> Unit,
     onAddCategory: (String) -> Unit,
     onAddQuestion: (String, String, String, Difficulty) -> Unit
 ) {
@@ -84,17 +99,14 @@ fun QuizOverviewScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp)
-        ) {
-            Text("题库", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            TextButton(onClick = { showAddCategory = true }) { Text("+ 分类") }
-            TextButton(onClick = { showAddQuestion = true }) { Text("+ 题目") }
-        }
+        QuizHeader(
+            nextQuestion = nextQuestion,
+            onStartNext = onStartNext,
+            onAddCategory = { showAddCategory = true },
+            onAddQuestion = { showAddQuestion = true }
+        )
 
         if (categories.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(top = 48.dp), contentAlignment = Alignment.Center) {
@@ -156,6 +168,133 @@ fun QuizOverviewScreen(
             onConfirm = { q, a, cat, diff -> onAddQuestion(q, a, cat, diff); showAddQuestion = false },
             onDismiss = { showAddQuestion = false }
         )
+    }
+}
+
+/**
+ * 题库页头部：状态栏留白 + “下一个要刷题目”卡片 + 新增分类/题目 圆角按钮。
+ */
+@Composable
+private fun QuizHeader(
+    nextQuestion: String?,
+    onStartNext: () -> Unit,
+    onAddCategory: () -> Unit,
+    onAddQuestion: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp)
+            .padding(top = 12.dp, bottom = 4.dp)
+    ) {
+        Text(
+            "题库",
+            style = MaterialTheme.typography.labelLarge,
+            color = TextSecondary
+        )
+        Spacer(Modifier.height(10.dp))
+
+        // 下一个要刷题目卡片
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = nextQuestion != null, onClick = onStartNext)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "接下来刷这道",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        nextQuestion ?: "暂无待刷题目",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = "开始刷题",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // 新增分类 / 新增题目 圆角按钮
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            HeaderActionButton(
+                text = "新增分类",
+                icon = Icons.AutoMirrored.Filled.List,
+                onClick = onAddCategory,
+                modifier = Modifier.weight(1f)
+            )
+            HeaderActionButton(
+                text = "新增题目",
+                icon = Icons.Filled.Add,
+                onClick = onAddQuestion,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun HeaderActionButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, OutlineSoft),
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = text,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary
+            )
+        }
     }
 }
 

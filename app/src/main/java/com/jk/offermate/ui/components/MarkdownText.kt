@@ -22,12 +22,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.jk.offermate.ui.theme.Indigo
 import com.jk.offermate.ui.theme.OutlineSoft
+import com.jk.offermate.ui.theme.TextPrimary
 import com.jk.offermate.ui.theme.TextSecondary
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
 
 private val CodeBackground = Color(0xFFF6F7FB)
 
@@ -44,6 +51,11 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
     Markdown(
         content = markdown,
         modifier = modifier,
+        colors = markdownColor(
+            text = TextPrimary,
+            linkText = Indigo
+        ),
+        typography = chatMarkdownTypography(),
         components = markdownComponents(
             // 注意：it.content 是整篇 Markdown 全文，需用节点偏移切出当前代码块文本
             codeFence = { CodeCard(nodeText(it.content, it.node)) },
@@ -51,6 +63,28 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
         )
     )
 }
+
+/**
+ * 对话专用的 Markdown 排版。库默认把 h1/h2 映射到 displaySmall/headlineMedium（36/28sp），
+ * 在手机对话里标题会大到占满半屏。这里收敛到贴近主流 AI 对话的克制字号。
+ */
+@Composable
+private fun chatMarkdownTypography() = markdownTypography(
+    h1 = TextStyle(color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 30.sp),
+    h2 = TextStyle(color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 27.sp),
+    h3 = TextStyle(color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 24.sp),
+    h4 = TextStyle(color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp),
+    h5 = TextStyle(color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp),
+    h6 = TextStyle(color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, lineHeight = 18.sp),
+    text = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp),
+    paragraph = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp),
+    ordered = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp),
+    bullet = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp),
+    list = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp),
+    quote = TextStyle(color = TextSecondary, fontSize = 15.sp, lineHeight = 23.sp),
+    code = TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 20.sp),
+    inlineCode = TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+)
 
 /** 用 AST 节点的偏移量从全文中切出该节点对应的原文（含 ``` 围栏或缩进）。 */
 private fun nodeText(content: String, node: org.intellij.markdown.ast.ASTNode): String {
