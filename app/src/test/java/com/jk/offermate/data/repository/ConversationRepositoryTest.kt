@@ -43,6 +43,9 @@ class ConversationRepositoryTest {
                     }
             }
 
+        override fun observeAllConversations(): Flow<List<ConversationEntity>> =
+            conversations.map { map -> map.values.sortedByDescending { it.updatedAt } }
+
         override suspend fun insert(conversation: ConversationEntity) {
             conversations.value = conversations.value + (conversation.id to conversation)
         }

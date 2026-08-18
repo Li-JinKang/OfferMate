@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -129,7 +130,9 @@ fun FollowUpScreen(
     onNewSession: () -> Unit = {},
     onSwitchSession: (String) -> Unit = {},
     onConsumeError: () -> Unit,
-    onConsumeNotice: () -> Unit
+    onConsumeNotice: () -> Unit,
+    /** 若提供，则顶部栏显示菜单（抽屉）图标而非返回箭头（AI 对话 Tab 内嵌用）。 */
+    onOpenDrawer: (() -> Unit)? = null
 ) {
     var input by remember { mutableStateOf("") }
     var deepThink by remember { mutableStateOf(false) }
@@ -159,7 +162,8 @@ fun FollowUpScreen(
         ChatTopBar(
             title = conversationTitle(conversations, activeConversationId, question),
             onBack = onBack,
-            onNewSession = onNewSession
+            onNewSession = onNewSession,
+            onOpenDrawer = onOpenDrawer
         )
 
         // 会话切换器：一道题可以有多轮独立讨论，横向切换 + 新开一轮
@@ -273,7 +277,8 @@ fun FollowUpScreen(
 private fun ChatTopBar(
     title: String,
     onBack: () -> Unit,
-    onNewSession: () -> Unit
+    onNewSession: () -> Unit,
+    onOpenDrawer: (() -> Unit)? = null
 ) {
     Surface(color = MaterialTheme.colorScheme.background) {
         Row(
@@ -283,12 +288,22 @@ private fun ChatTopBar(
                 .statusBarsPadding()
                 .padding(horizontal = 4.dp, vertical = 6.dp)
         ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    tint = TextPrimary
-                )
+            if (onOpenDrawer != null) {
+                IconButton(onClick = onOpenDrawer) {
+                    Icon(
+                        Icons.Filled.Menu,
+                        contentDescription = "对话历史",
+                        tint = TextPrimary
+                    )
+                }
+            } else {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = TextPrimary
+                    )
+                }
             }
             Column(
                 modifier = Modifier.weight(1f),

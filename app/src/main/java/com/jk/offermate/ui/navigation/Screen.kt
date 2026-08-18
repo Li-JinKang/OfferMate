@@ -15,7 +15,7 @@ sealed class Screen(
     val label: String,
     val icon: ImageVector
 ) {
-    data object Home : Screen("home", "导入", Icons.Filled.Home)
+    data object Home : Screen("home", "主页", Icons.Filled.Home)
     data object Quiz : Screen("quiz", "题库", Icons.AutoMirrored.Filled.List)
     data object AiChat : Screen("aichat", "AI对话", Icons.Filled.Email)
 

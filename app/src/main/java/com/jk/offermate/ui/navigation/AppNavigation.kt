@@ -113,12 +113,7 @@ fun OfferMateApp(
                 )
             }
             composable(Screen.AiChat.route) {
-                AiChatRoute(
-                    container = container,
-                    onOpenChat = { questionId ->
-                        navController.navigate("followup/${android.net.Uri.encode(questionId)}")
-                    }
-                )
+                AiChatRoute(container = container)
             }
             composable(Screen.Settings.route) {
                 ProfileRoute(container, onBack = { navController.popBackStack() })

@@ -24,6 +24,10 @@ interface ConversationDao {
     @Query("SELECT * FROM conversation WHERE questionId = :questionId ORDER BY createdAt ASC")
     fun observeAllByQuestionId(questionId: String): Flow<List<ConversationEntity>>
 
+    /** 全部会话（按最近活跃时间倒序），用于 AI 对话页抽屉的历史列表。 */
+    @Query("SELECT * FROM conversation ORDER BY updatedAt DESC")
+    fun observeAllConversations(): Flow<List<ConversationEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(conversation: ConversationEntity)
 

@@ -23,7 +23,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +48,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.agent.Difficulty
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.PuzzleGrid
+import com.jk.offermate.ui.components.SearchField
 import com.jk.offermate.ui.components.WaveFillBlob
 import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextPrimary
@@ -72,11 +72,9 @@ fun QuizRoute(container: AppContainer, onOpenCategory: (String) -> Unit) {
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     QuizOverviewScreen(
-        categories = state.categories,
-        // TODO: 待“下一个要刷题目”功能实现后，从 ViewModel 提供真实数据
-        nextQuestion = null,
+        state = state,
+        onQueryChange = viewModel::onQueryChange,
         onOpenCategory = onOpenCategory,
-        onStartNext = { /* TODO: 跳转到下一个要刷的题目 */ },
         onAddCategory = viewModel::addCategory,
         onAddQuestion = viewModel::addManualQuestion
     )
@@ -84,15 +82,15 @@ fun QuizRoute(container: AppContainer, onOpenCategory: (String) -> Unit) {
 
 @Composable
 fun QuizOverviewScreen(
-    categories: List<CategorySummary>,
-    nextQuestion: String?,
+    state: QuizOverviewState,
+    onQueryChange: (String) -> Unit,
     onOpenCategory: (String) -> Unit,
-    onStartNext: () -> Unit,
     onAddCategory: (String) -> Unit,
     onAddQuestion: (String, String, String, Difficulty) -> Unit
 ) {
     var showAddCategory by remember { mutableStateOf(false) }
     var showAddQuestion by remember { mutableStateOf(false) }
+    val categories = state.categories
 
     Column(
         Modifier
@@ -102,54 +100,78 @@ fun QuizOverviewScreen(
             .navigationBarsPadding()
     ) {
         QuizHeader(
-            nextQuestion = nextQuestion,
-            onStartNext = onStartNext,
+            query = state.query,
+            onQueryChange = onQueryChange,
             onAddCategory = { showAddCategory = true },
             onAddQuestion = { showAddQuestion = true }
         )
 
-        if (categories.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(top = 48.dp), contentAlignment = Alignment.Center) {
-                Text("题库还是空的，导入面经或手动新增题目吧", color = TextSecondary)
-            }
-        } else {
-            PuzzleGrid(
-                count = categories.size,
-                columns = 3,
-                cellHeight = 112.dp,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            ) { index, shape ->
-                val c = categories[index]
-                WaveFillBlob(
-                    progress = c.ratio,
-                    color = categoryColor(c.name),
-                    shape = shape,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { onOpenCategory(c.name) }
-                ) {
+        when {
+            // 搜索态：展示命中题目列表
+            state.searching -> {
+                if (state.results.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().padding(top = 48.dp), contentAlignment = Alignment.Center) {
+                        Text("没有匹配的题目", color = TextSecondary)
+                    }
+                } else {
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        // 内边距避开拼图四周的凸/凹 tab，防止文字被切掉
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 14.dp)
+                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            c.name,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "${c.practiced}/${c.total}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextPrimary
-                        )
+                        state.results.forEach { q ->
+                            val cat = CategoryResolver.displayCategory(q)
+                            SearchResultRow(question = q.question, category = cat) { onOpenCategory(cat) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+
+            categories.isEmpty() -> {
+                Box(Modifier.fillMaxSize().padding(top = 48.dp), contentAlignment = Alignment.Center) {
+                    Text("题库还是空的，导入面经或手动新增题目吧", color = TextSecondary)
+                }
+            }
+
+            else -> {
+                PuzzleGrid(
+                    count = categories.size,
+                    columns = 3,
+                    cellHeight = 112.dp,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                ) { index, shape ->
+                    val c = categories[index]
+                    WaveFillBlob(
+                        progress = c.ratio,
+                        color = categoryColor(c.name),
+                        shape = shape,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable { onOpenCategory(c.name) }
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            // 内边距避开拼图四周的凸/凹 tab，防止文字被切掉
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 18.dp, vertical = 14.dp)
+                        ) {
+                            Text(
+                                c.name,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "${c.practiced}/${c.total}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextPrimary
+                            )
+                        }
                     }
                 }
             }
@@ -171,13 +193,47 @@ fun QuizOverviewScreen(
     }
 }
 
+@Composable
+private fun SearchResultRow(question: String, category: String, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, OutlineSoft),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(categoryColor(category))
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    question,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(category, style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            }
+        }
+    }
+}
+
 /**
- * 题库页头部：状态栏留白 + “下一个要刷题目”卡片 + 新增分类/题目 圆角按钮。
+ * 题库页头部：状态栏留白 + 搜索框 + 新增分类/题目 圆角按钮。
  */
 @Composable
 private fun QuizHeader(
-    nextQuestion: String?,
-    onStartNext: () -> Unit,
+    query: String,
+    onQueryChange: (String) -> Unit,
     onAddCategory: () -> Unit,
     onAddQuestion: () -> Unit
 ) {
@@ -188,50 +244,11 @@ private fun QuizHeader(
             .padding(horizontal = 16.dp)
             .padding(top = 12.dp, bottom = 4.dp)
     ) {
-        // 下一个要刷题目卡片
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(enabled = nextQuestion != null, onClick = onStartNext)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "接下来刷这道",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        nextQuestion ?: "暂无待刷题目",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = "开始刷题",
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
-            }
-        }
+        SearchField(
+            value = query,
+            onValueChange = onQueryChange,
+            placeholder = "搜索题目 / 分类"
+        )
 
         Spacer(Modifier.height(12.dp))
 

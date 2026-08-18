@@ -28,6 +28,9 @@ interface ConversationRepository {
     /** 观察每道题的会话概要（questionId -> 概要），用于 AI 对话页列表。 */
     fun observeConversationSummaries(): Flow<Map<String, ConversationInfo>>
 
+    /** 观察全部会话（按最近活跃时间倒序），用于 AI 对话页抽屉的历史列表。 */
+    fun observeAllConversations(): Flow<List<ConversationEntity>>
+
     /** 观察某会话的消息（用于 UI）。 */
     fun observeMessages(conversationId: String): Flow<List<ChatMessage>>
 
@@ -73,6 +76,9 @@ class RoomConversationRepository(
         dao.observeConversationSummaries().map { rows ->
             rows.associate { it.questionId to ConversationInfo(it.count, it.lastUpdated) }
         }
+
+    override fun observeAllConversations(): Flow<List<ConversationEntity>> =
+        dao.observeAllConversations()
 
     override fun observeMessages(conversationId: String): Flow<List<ChatMessage>> =
         dao.observeMessages(conversationId).map { list -> list.map(::toDomain) }

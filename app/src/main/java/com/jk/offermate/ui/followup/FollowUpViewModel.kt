@@ -34,7 +34,9 @@ class FollowUpViewModel(
     private val questionRepository: QuestionRepository,
     private val conversationRepository: ConversationRepository,
     private val followUpService: FollowUpService,
-    private val resumeRepository: ResumeRepository
+    private val resumeRepository: ResumeRepository,
+    /** 若指定，则打开该会话；否则取/建该题最近一次会话。 */
+    private val initialConversationId: String? = null
 ) : ViewModel() {
 
     val question: StateFlow<AnsweredQuestion?> =
@@ -79,8 +81,12 @@ class FollowUpViewModel(
 
     init {
         viewModelScope.launch {
-            val q = question.filterNotNull().first()
-            conversationId.value = conversationRepository.getOrCreateForQuestion(questionId, q.question)
+            if (initialConversationId != null) {
+                conversationId.value = initialConversationId
+            } else {
+                val q = question.filterNotNull().first()
+                conversationId.value = conversationRepository.getOrCreateForQuestion(questionId, q.question)
+            }
         }
     }
 
@@ -179,7 +185,8 @@ class FollowUpViewModel(
             questionRepository: QuestionRepository,
             conversationRepository: ConversationRepository,
             followUpService: FollowUpService,
-            resumeRepository: ResumeRepository
+            resumeRepository: ResumeRepository,
+            initialConversationId: String? = null
         ) = viewModelFactory {
             initializer {
                 FollowUpViewModel(
@@ -187,7 +194,8 @@ class FollowUpViewModel(
                     questionRepository,
                     conversationRepository,
                     followUpService,
-                    resumeRepository
+                    resumeRepository,
+                    initialConversationId
                 )
             }
         }
