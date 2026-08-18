@@ -45,10 +45,18 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
         content = markdown,
         modifier = modifier,
         components = markdownComponents(
-            codeFence = { CodeCard(it.content) },
-            codeBlock = { CodeCard(it.content) }
+            // 注意：it.content 是整篇 Markdown 全文，需用节点偏移切出当前代码块文本
+            codeFence = { CodeCard(nodeText(it.content, it.node)) },
+            codeBlock = { CodeCard(nodeText(it.content, it.node)) }
         )
     )
+}
+
+/** 用 AST 节点的偏移量从全文中切出该节点对应的原文（含 ``` 围栏或缩进）。 */
+private fun nodeText(content: String, node: org.intellij.markdown.ast.ASTNode): String {
+    val start = node.startOffset.coerceIn(0, content.length)
+    val end = node.endOffset.coerceIn(start, content.length)
+    return content.substring(start, end)
 }
 
 @Composable
