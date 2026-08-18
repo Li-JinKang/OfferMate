@@ -94,9 +94,8 @@ dependencies {
     // 端侧 OCR：ML Kit 中文文字识别（bundled，含拉丁字母/数字，适配中英混排面经）
     implementation libs.mlkit.text.recognition.chinese
 
-    // Markdown 渲染（mikepenz，纯 Compose + Material3；代码块用自定义 CodeCard 渲染）
-    implementation libs.markdown.renderer
-    implementation libs.markdown.renderer.m3
+    // Markdown 渲染（Markwon 内核，TextView 承载；支持代码块/表格/任务列表，兼容当前 Compose 版本）
+    implementation libs.compose.markdown
 
     testImplementation libs.junit
     testImplementation libs.okhttp.mockwebserver
