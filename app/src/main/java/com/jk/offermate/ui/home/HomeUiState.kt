@@ -11,6 +11,8 @@ data class HomeUiState(
     val selectedFilter: String = ALL,
     val posts: List<Post> = emptyList(),
     val message: String? = null,
+    /** 一次性 Toast 提示（如：未上传简历仍继续分析）。 */
+    val toast: String? = null,
     val manualPasteVisible: Boolean = false
 ) {
     companion object {

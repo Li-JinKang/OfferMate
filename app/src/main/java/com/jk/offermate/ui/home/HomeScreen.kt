@@ -1,5 +1,6 @@
 package com.jk.offermate.ui.home
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,7 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -40,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,6 +64,7 @@ import com.jk.offermate.ui.theme.XiaohongshuRed
 fun HomeRoute(
     container: AppContainer,
     onOpenPost: (String) -> Unit,
+    onOpenSettings: () -> Unit = {},
     sharedText: String? = null,
     onSharedTextConsumed: () -> Unit = {}
 ) {
@@ -69,10 +72,20 @@ fun HomeRoute(
         factory = HomeViewModel.provideFactory(
             postRepository = container.postRepository,
             importScheduler = container.importScheduler,
-            resumeRepository = container.resumeRepository
+            resumeRepository = container.resumeRepository,
+            settingsRepository = container.settingsRepository
         )
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // 一次性 Toast（如：未上传简历仍继续分析）
+    val context = LocalContext.current
+    LaunchedEffect(state.toast) {
+        state.toast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.onConsumeToast()
+        }
+    }
 
     // 从其他 App 分享进来的文本：收到后立即入队分析，并通知上层清空，避免重进/旋转时重复触发。
     LaunchedEffect(sharedText) {
@@ -90,6 +103,7 @@ fun HomeRoute(
         onToggleManualPaste = viewModel::onToggleManualPaste,
         onPasteAnalyze = viewModel::onPasteAnalyze,
         onOpenPost = { post -> onOpenPost(post.id) },
+        onOpenSettings = onOpenSettings,
         onTogglePin = viewModel::onTogglePin,
         onDelete = viewModel::onDelete
     )
@@ -104,6 +118,7 @@ fun HomeScreen(
     onToggleManualPaste: () -> Unit,
     onPasteAnalyze: (String) -> Unit,
     onOpenPost: (Post) -> Unit,
+    onOpenSettings: () -> Unit,
     onTogglePin: (Post) -> Unit,
     onDelete: (String) -> Unit
 ) {
@@ -118,7 +133,8 @@ fun HomeScreen(
         item {
             HomeHeader(
                 postCount = state.posts.size,
-                questionCount = state.posts.sumOf { it.parsedQuestionCount }
+                questionCount = state.posts.sumOf { it.parsedQuestionCount },
+                onOpenSettings = onOpenSettings
             )
         }
 
@@ -169,7 +185,8 @@ fun HomeScreen(
 @Composable
 private fun HomeHeader(
     postCount: Int,
-    questionCount: Int
+    questionCount: Int,
+    onOpenSettings: () -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -198,12 +215,12 @@ private fun HomeHeader(
                 .size(44.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surface)
-                .clickable { /* TODO: 搜索功能待实现 */ },
+                .clickable(onClick = onOpenSettings),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                Icons.Filled.Search,
-                contentDescription = "搜索",
+                Icons.Filled.Settings,
+                contentDescription = "设置",
                 tint = MaterialTheme.colorScheme.primary
             )
         }

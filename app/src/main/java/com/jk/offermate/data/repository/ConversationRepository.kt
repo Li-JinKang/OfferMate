@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 
+/** 某道题的会话概要：会话数量与最近活跃时间。 */
+data class ConversationInfo(val count: Int, val lastUpdated: Long)
+
 /**
  * 会话仓库：会话 CRUD、追加消息、加载上下文。全部本地持久化。
  */
@@ -21,6 +24,9 @@ interface ConversationRepository {
 
     /** 观察某道题下的所有会话（按创建时间升序，用于会话切换器 UI）。 */
     fun observeConversationsForQuestion(questionId: String): Flow<List<ConversationEntity>>
+
+    /** 观察每道题的会话概要（questionId -> 概要），用于 AI 对话页列表。 */
+    fun observeConversationSummaries(): Flow<Map<String, ConversationInfo>>
 
     /** 观察某会话的消息（用于 UI）。 */
     fun observeMessages(conversationId: String): Flow<List<ChatMessage>>
@@ -62,6 +68,11 @@ class RoomConversationRepository(
 
     override fun observeConversationsForQuestion(questionId: String): Flow<List<ConversationEntity>> =
         dao.observeAllByQuestionId(questionId)
+
+    override fun observeConversationSummaries(): Flow<Map<String, ConversationInfo>> =
+        dao.observeConversationSummaries().map { rows ->
+            rows.associate { it.questionId to ConversationInfo(it.count, it.lastUpdated) }
+        }
 
     override fun observeMessages(conversationId: String): Flow<List<ChatMessage>> =
         dao.observeMessages(conversationId).map { list -> list.map(::toDomain) }

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jk.offermate.data.resume.ResumeRepository
+import com.jk.offermate.data.settings.SettingsRepository
 import com.jk.offermate.domain.repository.PostRepository
 import com.jk.offermate.share.ShareIntentParser
 import com.jk.offermate.ui.home.HomeUiState.Companion.ALL
@@ -25,7 +26,8 @@ import kotlinx.coroutines.launch
 class HomeViewModel(
     private val postRepository: PostRepository,
     private val importScheduler: ImportScheduler,
-    private val resumeRepository: ResumeRepository
+    private val resumeRepository: ResumeRepository,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val filters = listOf(ALL) + postRepository.categories()
@@ -60,7 +62,7 @@ class HomeViewModel(
         val link = _uiState.value.linkInput.trim()
         if (link.isEmpty()) return
         viewModelScope.launch {
-            if (!hasResume()) return@launch
+            if (!canAnalyze()) return@launch
             importScheduler.enqueueUrl(link)
             _uiState.update {
                 it.copy(
@@ -75,7 +77,7 @@ class HomeViewModel(
     fun onPasteAnalyze(text: String) {
         if (text.isBlank()) return
         viewModelScope.launch {
-            if (!hasResume()) return@launch
+            if (!canAnalyze()) return@launch
             importScheduler.enqueueText(text, _uiState.value.linkInput.trim())
             _uiState.update {
                 it.copy(manualPasteVisible = false, message = "已加入后台分析，完成后会通知你")
@@ -90,7 +92,7 @@ class HomeViewModel(
     fun onSharedTextReceived(sharedText: String) {
         val link = ShareIntentParser.extractLink(sharedText)
         viewModelScope.launch {
-            if (!hasResume()) return@launch
+            if (!canAnalyze()) return@launch
             if (link != null) {
                 importScheduler.enqueueUrl(link)
             } else {
@@ -110,19 +112,35 @@ class HomeViewModel(
         viewModelScope.launch { postRepository.delete(postId) }
     }
 
-    private suspend fun hasResume(): Boolean {
-        val ok = resumeRepository.profile.first().rawText.isNotBlank()
-        if (!ok) _uiState.update { it.copy(message = "请先在\"我的\"里上传简历") }
-        return ok
+    fun onConsumeToast() {
+        _uiState.update { it.copy(toast = null) }
+    }
+
+    /**
+     * 分析前置校验：只要配置了 API Key 即可分析。
+     * 未配置 Key 直接拦截；已配置但未上传简历时，仍继续分析，仅弹 Toast 提示（简历匹配度将不可用）。
+     */
+    private suspend fun canAnalyze(): Boolean {
+        val configured = settingsRepository.activeConfig.first().isConfigured
+        if (!configured) {
+            _uiState.update { it.copy(message = "请先在设置中配置 API Key") }
+            return false
+        }
+        val hasResume = resumeRepository.profile.first().rawText.isNotBlank()
+        if (!hasResume) {
+            _uiState.update { it.copy(toast = "未上传简历，将按无简历模式分析（简历匹配度不可用）") }
+        }
+        return true
     }
 
     companion object {
         fun provideFactory(
             postRepository: PostRepository,
             importScheduler: ImportScheduler,
-            resumeRepository: ResumeRepository
+            resumeRepository: ResumeRepository,
+            settingsRepository: SettingsRepository
         ) = viewModelFactory {
-            initializer { HomeViewModel(postRepository, importScheduler, resumeRepository) }
+            initializer { HomeViewModel(postRepository, importScheduler, resumeRepository, settingsRepository) }
         }
     }
 }

@@ -41,6 +41,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jk.offermate.di.AppContainer
+import com.jk.offermate.ui.aichat.AiChatRoute
 import com.jk.offermate.ui.followup.FollowUpRoute
 import com.jk.offermate.ui.home.HomeRoute
 import com.jk.offermate.ui.profile.ProfileRoute
@@ -59,23 +60,27 @@ fun OfferMateApp(
 ) {
     val navController = rememberNavController()
 
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+    // 仅在 Tab 目的地展示底部导航栏；帖子详情/AI 对话/设置等页面不展示。
+    val showBottomBar = currentDestination?.route in Screen.tabRoutes
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            val navBackStackEntry by navController.currentBackStackEntryAsState()
-            val currentDestination = navBackStackEntry?.destination
-
-            FloatingBottomBar(
-                currentDestination = currentDestination,
-                onNavigate = { screen ->
-                    navController.navigate(screen.route) {
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
+            if (showBottomBar) {
+                FloatingBottomBar(
+                    currentDestination = currentDestination,
+                    onNavigate = { screen ->
+                        navController.navigate(screen.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { innerPadding ->
         NavHost(
@@ -87,6 +92,7 @@ fun OfferMateApp(
                 HomeRoute(
                     container = container,
                     onOpenPost = { postId -> navController.navigate("questions/$postId") },
+                    onOpenSettings = { navController.navigate(Screen.Settings.route) },
                     sharedText = sharedText,
                     onSharedTextConsumed = onSharedTextConsumed
                 )
@@ -106,7 +112,17 @@ fun OfferMateApp(
                     onBack = { navController.popBackStack() }
                 )
             }
-            composable(Screen.Profile.route) { ProfileRoute(container) }
+            composable(Screen.AiChat.route) {
+                AiChatRoute(
+                    container = container,
+                    onOpenChat = { questionId ->
+                        navController.navigate("followup/${android.net.Uri.encode(questionId)}")
+                    }
+                )
+            }
+            composable(Screen.Settings.route) {
+                ProfileRoute(container, onBack = { navController.popBackStack() })
+            }
             composable(
                 route = "questions/{postId}",
                 arguments = listOf(navArgument("postId") { type = NavType.StringType })

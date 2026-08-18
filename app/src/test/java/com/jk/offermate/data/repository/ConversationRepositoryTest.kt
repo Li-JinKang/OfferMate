@@ -2,6 +2,7 @@ package com.jk.offermate.data.repository
 
 import com.jk.offermate.agent.Role
 import com.jk.offermate.data.local.dao.ConversationDao
+import com.jk.offermate.data.local.dao.ConversationSummaryRow
 import com.jk.offermate.data.local.entity.ChatMessageEntity
 import com.jk.offermate.data.local.entity.ConversationEntity
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +31,16 @@ class ConversationRepositoryTest {
         override fun observeAllByQuestionId(questionId: String): Flow<List<ConversationEntity>> =
             conversations.map { map ->
                 map.values.filter { it.questionId == questionId }.sortedBy { it.createdAt }
+            }
+
+        override fun observeConversationSummaries(): Flow<List<ConversationSummaryRow>> =
+            conversations.map { map ->
+                map.values
+                    .filter { it.questionId != null }
+                    .groupBy { it.questionId!! }
+                    .map { (qid, list) ->
+                        ConversationSummaryRow(qid, list.size, list.maxOf { it.updatedAt })
+                    }
             }
 
         override suspend fun insert(conversation: ConversationEntity) {

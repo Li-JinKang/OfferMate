@@ -8,6 +8,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,7 +57,7 @@ import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextSecondary
 
 @Composable
-fun ProfileRoute(container: AppContainer) {
+fun ProfileRoute(container: AppContainer, onBack: () -> Unit = {}) {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.provideFactory(container.settingsRepository)
     )
@@ -88,7 +89,8 @@ fun ProfileRoute(container: AppContainer) {
         onConsumeError = resumeViewModel::consumeError,
         onSelectProvider = settingsViewModel::onSelectProvider,
         onEnable = settingsViewModel::onEnable,
-        onThresholdChange = settingsViewModel::onThresholdChange
+        onThresholdChange = settingsViewModel::onThresholdChange,
+        onBack = onBack
     )
 }
 
@@ -104,7 +106,8 @@ fun ProfileScreen(
     onConsumeError: () -> Unit,
     onSelectProvider: (AiProvider) -> Unit,
     onEnable: (String, String, String) -> Unit,
-    onThresholdChange: (Int) -> Unit
+    onThresholdChange: (Int) -> Unit,
+    onBack: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -114,6 +117,12 @@ fun ProfileScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack, contentPadding = PaddingValues(0.dp)) { Text("‹ 返回") }
+            Spacer(Modifier.size(8.dp))
+            Text("设置", style = MaterialTheme.typography.titleLarge)
+        }
+
         val resumeSubtitle = if (profile.rawText.isBlank()) "未上传" else "已上传"
         ExpandableCard(title = "我的简历", subtitle = resumeSubtitle) {
             ResumeContent(profile, resumeFilePath, resumeLoading, resumeError, onPickPdf, onSaveRawText, onConsumeError)

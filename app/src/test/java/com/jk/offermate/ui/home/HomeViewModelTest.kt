@@ -3,6 +3,8 @@ package com.jk.offermate.ui.home
 import com.jk.offermate.agent.ResumeProfile
 import com.jk.offermate.data.repository.FakePostRepository
 import com.jk.offermate.data.resume.ResumeRepository
+import com.jk.offermate.data.settings.ProviderConfig
+import com.jk.offermate.data.settings.SettingsRepository
 import com.jk.offermate.work.ImportScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -50,25 +52,49 @@ class HomeViewModelTest {
         override suspend fun setFilePath(path: String?) {}
     }
 
+    private class FakeSettingsRepository(apiKey: String) : SettingsRepository {
+        private val cfg = ProviderConfig(providerId = "deepseek", apiKey = apiKey, model = "m", baseUrl = "b")
+        override val activeProviderId: Flow<String> = MutableStateFlow(cfg.providerId)
+        override val relevanceThreshold: Flow<Int> = MutableStateFlow(70)
+        override val activeConfig: Flow<ProviderConfig> = MutableStateFlow(cfg)
+        override fun config(providerId: String): Flow<ProviderConfig> = MutableStateFlow(cfg)
+        override suspend fun enableProvider(providerId: String, apiKey: String, model: String, baseUrl: String) {}
+        override suspend fun updateRelevanceThreshold(value: Int) {}
+    }
+
     private fun viewModel(
         scheduler: FakeImportScheduler = FakeImportScheduler(),
-        resumeText: String = "我的简历内容"
+        resumeText: String = "我的简历内容",
+        apiKey: String = "sk-test"
     ) = HomeViewModel(
         postRepository = FakePostRepository(),
         importScheduler = scheduler,
-        resumeRepository = FakeResumeRepository(ResumeProfile(targetRole = "", rawText = resumeText))
+        resumeRepository = FakeResumeRepository(ResumeProfile(targetRole = "", rawText = resumeText)),
+        settingsRepository = FakeSettingsRepository(apiKey)
     )
 
     @Test
-    fun `extract without resume shows hint and does not enqueue`() {
+    fun `extract without api key shows hint and does not enqueue`() {
+        val scheduler = FakeImportScheduler()
+        val vm = viewModel(scheduler, apiKey = "")
+        vm.onLinkChange("https://www.nowcoder.com/x")
+
+        vm.onExtract()
+
+        assertTrue(scheduler.urls.isEmpty())
+        assertTrue(vm.uiState.value.message!!.contains("API Key"))
+    }
+
+    @Test
+    fun `extract without resume still enqueues and shows toast`() {
         val scheduler = FakeImportScheduler()
         val vm = viewModel(scheduler, resumeText = "")
         vm.onLinkChange("https://www.nowcoder.com/x")
 
         vm.onExtract()
 
-        assertTrue(scheduler.urls.isEmpty())
-        assertTrue(vm.uiState.value.message!!.contains("简历"))
+        assertEquals(listOf("https://www.nowcoder.com/x"), scheduler.urls)
+        assertTrue(vm.uiState.value.toast!!.contains("简历"))
     }
 
     @Test
@@ -118,13 +144,13 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `shared text without resume shows hint and does not enqueue`() {
+    fun `shared text without api key shows hint and does not enqueue`() {
         val scheduler = FakeImportScheduler()
-        val vm = viewModel(scheduler, resumeText = "")
+        val vm = viewModel(scheduler, apiKey = "")
 
         vm.onSharedTextReceived("https://www.nowcoder.com/x")
 
         assertTrue(scheduler.urls.isEmpty())
-        assertTrue(vm.uiState.value.message!!.contains("简历"))
+        assertTrue(vm.uiState.value.message!!.contains("API Key"))
     }
 }

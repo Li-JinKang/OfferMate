@@ -14,6 +14,13 @@ interface ConversationDao {
     @Query("SELECT * FROM conversation WHERE questionId = :questionId ORDER BY updatedAt DESC LIMIT 1")
     suspend fun findLatestByQuestionId(questionId: String): ConversationEntity?
 
+    /** 每道题的会话概要：会话数量 + 最近活跃时间（用于 AI 对话页“继续对话”与已聊标记）。 */
+    @Query(
+        "SELECT questionId AS questionId, COUNT(*) AS count, MAX(updatedAt) AS lastUpdated " +
+            "FROM conversation WHERE questionId IS NOT NULL GROUP BY questionId"
+    )
+    fun observeConversationSummaries(): Flow<List<ConversationSummaryRow>>
+
     @Query("SELECT * FROM conversation WHERE questionId = :questionId ORDER BY createdAt ASC")
     fun observeAllByQuestionId(questionId: String): Flow<List<ConversationEntity>>
 
@@ -38,3 +45,10 @@ interface ConversationDao {
     @Query("DELETE FROM chat_message WHERE conversationId = :conversationId")
     suspend fun deleteMessages(conversationId: String)
 }
+
+/** [ConversationDao.observeConversationSummaries] 的投影行。 */
+data class ConversationSummaryRow(
+    val questionId: String,
+    val count: Int,
+    val lastUpdated: Long
+)

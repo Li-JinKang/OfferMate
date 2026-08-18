@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
@@ -59,7 +60,9 @@ fun QuestionsScreen(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(horizontal = 8.dp, vertical = 8.dp)
         ) {
             TextButton(onClick = onBack) { Text("‹ 返回") }
             Text("题目（${questions.size}）", style = MaterialTheme.typography.titleMedium)
