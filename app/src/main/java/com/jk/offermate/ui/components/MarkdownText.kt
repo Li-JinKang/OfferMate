@@ -2,7 +2,6 @@ package com.jk.offermate.ui.components
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,52 +26,42 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextSecondary
-import dev.jeziellago.compose.markdowntext.MarkdownText as LibMarkdownText
+import com.mikepenz.markdown.compose.components.markdownComponents
+import com.mikepenz.markdown.m3.Markdown
 
 private val CodeBackground = Color(0xFFF6F7FB)
 
 /**
- * Markdown 渲染。按 ``` 代码围栏**分段**：
- * - 代码块 → 自定义 [CodeCard]（语言标签 + 复制按钮 + 等宽横向滚动，参考主流 AI 对话样式）；
- * - 其余散文 → [jeziellago/compose-markdown](https://github.com/jeziellago/compose-markdown)（Markwon 内核，
- *   兼容当前 Compose 版本，支持标题/列表/表格/行内样式）。
+ * Markdown 渲染。使用 [mikepenz/multiplatform-markdown-renderer](https://github.com/mikepenz/multiplatform-markdown-renderer)
+ * （纯 Compose + Material3，需 Compose 1.8+），散文/标题/列表/**表格**/行内样式由其原生渲染；
+ * 代码块通过 `markdownComponents(codeFence/codeBlock)` 交给自定义 [CodeCard]：
+ * **语言标签 + 复制按钮 + 等宽横向滚动 + 圆角边框**，贴近主流 AI 对话的代码块样式。
  *
- * 这样既得到美观的代码卡，又不引入需要 Compose 1.8 的纯 Compose 库（避免运行时崩溃）。
+ * 保留 `MarkdownText(text)` 包装以稳定调用方 API（题目卡片、追问气泡）。
  */
 @Composable
 fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
-    val blocks = remember(markdown) { splitIntoBlocks(markdown) }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        blocks.forEach { block ->
-            when (block) {
-                is MdBlock.Code -> CodeCard(block.language, block.code)
-                is MdBlock.Prose -> if (block.text.isNotBlank()) {
-                    LibMarkdownText(
-                        markdown = block.text.trim(),
-                        modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    )
-                }
-            }
-        }
-    }
+    Markdown(
+        content = markdown,
+        modifier = modifier,
+        components = markdownComponents(
+            codeFence = { CodeCard(it.content) },
+            codeBlock = { CodeCard(it.content) }
+        )
+    )
 }
 
 @Composable
-private fun CodeCard(language: String, code: String) {
+private fun CodeCard(raw: String) {
+    val (language, code) = remember(raw) { parseCode(raw) }
     val clipboard = LocalClipboardManager.current
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = CodeBackground)
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .border(1.dp, OutlineSoft, RoundedCornerShape(12.dp))
-        ) {
+        Column(Modifier.fillMaxWidth().border(1.dp, OutlineSoft, RoundedCornerShape(12.dp))) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -107,30 +96,15 @@ private fun CodeCard(language: String, code: String) {
     }
 }
 
-private sealed interface MdBlock {
-    data class Prose(val text: String) : MdBlock
-    data class Code(val language: String, val code: String) : MdBlock
-}
-
-private val FENCE = Regex("```([^\\n`]*)\\n([\\s\\S]*?)```")
-
-/** 按 ``` 围栏切分为散文/代码块（去掉行内 ``` 干扰交给正则的非贪婪匹配）。 */
-private fun splitIntoBlocks(markdown: String): List<MdBlock> {
-    val text = markdown.replace("\r\n", "\n")
-    val blocks = mutableListOf<MdBlock>()
-    var cursor = 0
-    for (match in FENCE.findAll(text)) {
-        if (match.range.first > cursor) {
-            blocks += MdBlock.Prose(text.substring(cursor, match.range.first))
-        }
-        val language = match.groupValues[1].trim()
-        val code = match.groupValues[2].trimEnd('\n')
-        blocks += MdBlock.Code(language, code)
-        cursor = match.range.last + 1
+/** 从节点原文解析出语言与代码正文（去掉 ``` 围栏与语言行；缩进代码块则去公共缩进）。 */
+private fun parseCode(raw: String): Pair<String, String> {
+    val trimmed = raw.trim()
+    if (trimmed.startsWith("```")) {
+        val lines = trimmed.lines()
+        val language = lines.first().removePrefix("```").trim()
+        var body = lines.drop(1)
+        if (body.isNotEmpty() && body.last().trim() == "```") body = body.dropLast(1)
+        return language to body.joinToString("\n")
     }
-    if (cursor < text.length) {
-        blocks += MdBlock.Prose(text.substring(cursor))
-    }
-    if (blocks.isEmpty()) blocks += MdBlock.Prose(text)
-    return blocks
+    return "" to trimmed.trimIndent()
 }

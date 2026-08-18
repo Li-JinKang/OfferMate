@@ -13,7 +13,7 @@ readability4j = "1.0.8"
 okhttp = "4.12.0"
 coroutines = "1.9.0"
 serializationJson = "1.7.3"
-composeBom = "2024.09.00"
+composeBom = "2025.06.01"
 lifecycle = "2.8.7"
 navigationCompose = "2.8.4"
 ksp = "2.0.21-1.0.28"
@@ -26,7 +26,7 @@ retrofitSerializationConverter = "1.0.0"
 coil = "2.7.0"
 pdfboxAndroid = "2.0.27.0"
 mlkitTextChinese = "16.0.1"
-composeMarkdown = "0.7.2"
+markdownRenderer = "0.34.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -64,7 +64,8 @@ retrofit-kotlinx-serialization = { group = "com.jakewharton.retrofit", name = "r
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
 mlkit-text-recognition-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextChinese" }
-compose-markdown = { module = "com.github.jeziellago:compose-markdown", version.ref = "composeMarkdown" }
+markdown-renderer = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "markdownRenderer" }
+markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
