@@ -26,6 +26,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,7 +54,12 @@ import com.jk.offermate.ui.theme.TextSecondary
 import com.jk.offermate.ui.theme.XiaohongshuRed
 
 @Composable
-fun HomeRoute(container: AppContainer, onOpenPost: (String) -> Unit) {
+fun HomeRoute(
+    container: AppContainer,
+    onOpenPost: (String) -> Unit,
+    sharedText: String? = null,
+    onSharedTextConsumed: () -> Unit = {}
+) {
     val viewModel: HomeViewModel = viewModel(
         factory = HomeViewModel.provideFactory(
             postRepository = container.postRepository,
@@ -62,6 +68,14 @@ fun HomeRoute(container: AppContainer, onOpenPost: (String) -> Unit) {
         )
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // 从其他 App 分享进来的文本：收到后立即入队分析，并通知上层清空，避免重进/旋转时重复触发。
+    LaunchedEffect(sharedText) {
+        if (!sharedText.isNullOrBlank()) {
+            viewModel.onSharedTextReceived(sharedText)
+            onSharedTextConsumed()
+        }
+    }
 
     HomeScreen(
         state = state,

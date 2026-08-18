@@ -10,6 +10,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,7 +34,11 @@ import com.jk.offermate.ui.quiz.QuizRoute
  * 应用根 UI：底部导航 + NavHost。依赖通过 [container] 向下传递（构造注入）。
  */
 @Composable
-fun OfferMateApp(container: AppContainer) {
+fun OfferMateApp(
+    container: AppContainer,
+    sharedText: String? = null,
+    onSharedTextConsumed: () -> Unit = {}
+) {
     val navController = rememberNavController()
 
     Scaffold(
@@ -66,7 +71,12 @@ fun OfferMateApp(container: AppContainer) {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Screen.Home.route) {
-                HomeRoute(container, onOpenPost = { postId -> navController.navigate("questions/$postId") })
+                HomeRoute(
+                    container = container,
+                    onOpenPost = { postId -> navController.navigate("questions/$postId") },
+                    sharedText = sharedText,
+                    onSharedTextConsumed = onSharedTextConsumed
+                )
             }
             composable(Screen.Quiz.route) {
                 QuizRoute(container, onOpenCategory = { name ->

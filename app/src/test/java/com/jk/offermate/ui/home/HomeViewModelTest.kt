@@ -93,4 +93,38 @@ class HomeViewModelTest {
 
         assertEquals(listOf("一段粘贴的正文"), scheduler.texts)
     }
+
+    @Test
+    fun `shared text with link enqueues url`() {
+        val scheduler = FakeImportScheduler()
+        val vm = viewModel(scheduler)
+
+        vm.onSharedTextReceived("这道面试题真难 https://xhslink.cn/o/6Gz0nDGZxAE 大家来看看")
+
+        assertEquals(listOf("https://xhslink.cn/o/6Gz0nDGZxAE"), scheduler.urls)
+        assertTrue(scheduler.texts.isEmpty())
+        assertTrue(vm.uiState.value.message!!.contains("分享"))
+    }
+
+    @Test
+    fun `shared text without link enqueues as manual text`() {
+        val scheduler = FakeImportScheduler()
+        val vm = viewModel(scheduler)
+
+        vm.onSharedTextReceived("一段没有链接的面经正文")
+
+        assertEquals(listOf("一段没有链接的面经正文"), scheduler.texts)
+        assertTrue(scheduler.urls.isEmpty())
+    }
+
+    @Test
+    fun `shared text without resume shows hint and does not enqueue`() {
+        val scheduler = FakeImportScheduler()
+        val vm = viewModel(scheduler, resumeText = "")
+
+        vm.onSharedTextReceived("https://www.nowcoder.com/x")
+
+        assertTrue(scheduler.urls.isEmpty())
+        assertTrue(vm.uiState.value.message!!.contains("简历"))
+    }
 }

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jk.offermate.data.resume.ResumeRepository
 import com.jk.offermate.domain.repository.PostRepository
+import com.jk.offermate.share.ShareIntentParser
 import com.jk.offermate.ui.home.HomeUiState.Companion.ALL
 import com.jk.offermate.work.ImportScheduler
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -78,6 +79,25 @@ class HomeViewModel(
             importScheduler.enqueueText(text, _uiState.value.linkInput.trim())
             _uiState.update {
                 it.copy(manualPasteVisible = false, message = "已加入后台分析，完成后会通知你")
+            }
+        }
+    }
+
+    /**
+     * 处理从系统分享（其他 App 的"分享到 OfferMate"）收到的文本。
+     * 能提取出链接则按链接入队分析；否则把整段文本当作手动粘贴的正文入队。
+     */
+    fun onSharedTextReceived(sharedText: String) {
+        val link = ShareIntentParser.extractLink(sharedText)
+        viewModelScope.launch {
+            if (!hasResume()) return@launch
+            if (link != null) {
+                importScheduler.enqueueUrl(link)
+            } else {
+                importScheduler.enqueueText(sharedText)
+            }
+            _uiState.update {
+                it.copy(message = "已收到分享内容，加入后台分析，完成后会通知你")
             }
         }
     }
