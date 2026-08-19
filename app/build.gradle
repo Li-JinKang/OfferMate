@@ -25,8 +25,15 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            // R8：开启代码混淆/优化 + 资源压缩，缩小包体
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            // 调试构建保持不混淆，便于定位问题
+            minifyEnabled false
+            shrinkResources false
         }
     }
     compileOptions {
