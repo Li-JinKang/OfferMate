@@ -139,20 +139,34 @@ fun OfferMateApp(
                 composable(Screen.Quiz.route) {
                     QuizRoute(
                         container,
-                        onOpenCategory = { name ->
-                            navController.navigate("quizCategory/${android.net.Uri.encode(name)}")
+                        onOpenCategory = { name, questionId ->
+                            val base = "quizCategory/${android.net.Uri.encode(name)}"
+                            val route = if (questionId != null) {
+                                "$base?highlight=${android.net.Uri.encode(questionId)}"
+                            } else {
+                                base
+                            }
+                            navController.navigate(route)
                         },
                         contentBottomPadding = tabDockReserve
                     )
                 }
                 composable(
-                    route = "quizCategory/{category}",
-                    arguments = listOf(navArgument("category") { type = NavType.StringType })
+                    route = "quizCategory/{category}?highlight={highlight}",
+                    arguments = listOf(
+                        navArgument("category") { type = NavType.StringType },
+                        navArgument("highlight") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        }
+                    )
                 ) { entry ->
                     QuizCategoryRoute(
                         container = container,
                         category = entry.arguments?.getString("category").orEmpty(),
-                        onBack = { navController.popBackStack() }
+                        onBack = { navController.popBackStack() },
+                        highlightQuestionId = entry.arguments?.getString("highlight")
                     )
                 }
                 composable(Screen.AiChat.route) {

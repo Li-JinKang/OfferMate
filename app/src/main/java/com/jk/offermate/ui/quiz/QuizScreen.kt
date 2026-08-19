@@ -70,7 +70,7 @@ internal fun categoryColor(category: String?): Color {
 @Composable
 fun QuizRoute(
     container: AppContainer,
-    onOpenCategory: (String) -> Unit,
+    onOpenCategory: (category: String, questionId: String?) -> Unit,
     contentBottomPadding: Dp = 0.dp
 ) {
     val viewModel: QuizViewModel = viewModel(
@@ -91,7 +91,7 @@ fun QuizRoute(
 fun QuizOverviewScreen(
     state: QuizOverviewState,
     onQueryChange: (String) -> Unit,
-    onOpenCategory: (String) -> Unit,
+    onOpenCategory: (category: String, questionId: String?) -> Unit,
     onAddCategory: (String) -> Unit,
     onAddQuestion: (String, String, String, Difficulty) -> Unit,
     contentBottomPadding: Dp = 0.dp
@@ -127,7 +127,9 @@ fun QuizOverviewScreen(
                     ) {
                         state.results.forEach { q ->
                             val cat = CategoryResolver.displayCategory(q)
-                            SearchResultRow(question = q.question, category = cat, query = state.query) { onOpenCategory(cat) }
+                            SearchResultRow(question = q.question, category = cat, query = state.query) {
+                                onOpenCategory(cat, q.id.ifBlank { null })
+                            }
                         }
                         Spacer(Modifier.height(8.dp))
                     }
@@ -154,7 +156,7 @@ fun QuizOverviewScreen(
                         shape = shape,
                         modifier = Modifier
                             .fillMaxSize()
-                            .clickable { onOpenCategory(c.name) }
+                            .clickable { onOpenCategory(c.name, null) }
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,

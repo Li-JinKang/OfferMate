@@ -1,5 +1,7 @@
 package com.jk.offermate.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -16,13 +18,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.ui.theme.BadgeHotBg
@@ -41,12 +46,28 @@ fun AnsweredQuestionCard(
     borderColor: Color? = null,
     onTogglePracticed: (() -> Unit)? = null,
     onFollowUp: (() -> Unit)? = null,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    /** 置 true 时播放一次“放大→复原”提示动画（用于从搜索结果定位到本卡片）。 */
+    pulse: Boolean = false
 ) {
     var revealed by rememberSaveable(q.question) { mutableStateOf(false) }
+
+    // 提示动画：缩放 1 → 1.06 → 1，仅在 pulse 首次为 true 时播放一次
+    val scale = remember { Animatable(1f) }
+    LaunchedEffect(pulse) {
+        if (pulse) {
+            scale.animateTo(1.06f, tween(200))
+            scale.animateTo(1f, tween(340))
+        }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            }
             .clickable { revealed = !revealed },
         shape = RoundedCornerShape(16.dp),
         border = borderColor?.let { BorderStroke(1.5.dp, it) },
