@@ -35,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +53,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.data.local.PostMappers
 import com.jk.offermate.di.AppContainer
+import com.jk.offermate.ui.followup.CompactChatInput
 import com.jk.offermate.ui.followup.FollowUpScreen
 import com.jk.offermate.ui.quiz.categoryColor
 import com.jk.offermate.ui.theme.TextPrimary
@@ -63,29 +65,14 @@ import kotlinx.coroutines.launch
 @Composable
 fun AiChatRoute(
     container: AppContainer,
-    currentDestination: androidx.navigation.NavDestination? = null,
-    onNavigateTab: (com.jk.offermate.ui.navigation.Screen) -> Unit = {},
     /** 由“追问”携带进来的题目 id：进入后自动就该题打开/新建对话。 */
     pendingQuestionId: String? = null,
-    onPendingConsumed: () -> Unit = {}
+    onPendingConsumed: () -> Unit = {},
+    /** 把当前会话的输入胶囊内容登记到 app 级常驻 dock；离开页面时以 null 注销。 */
+    registerInputContent: ((@Composable () -> Unit)?) -> Unit = {},
+    /** 请求把 dock 的输入胶囊归位到前台（新对话/切换会话时用）。 */
+    onResetInputFront: () -> Unit = {}
 ) {
-    // dock 状态提升到此：离开页面（点其它 Tab）时先归位为 true，让 Tab 胶囊向下滑到对齐位再退出
-    var inputInFront by remember { mutableStateOf(true) }
-
-    // dock 里用的 Tab 胶囊：不透明、与输入胶囊等高
-    val tabs: @Composable () -> Unit = {
-        com.jk.offermate.ui.navigation.TabPill(
-            currentDestination = currentDestination,
-            onNavigate = { screen ->
-                // 归位：Tab 胶囊从前置(高)滑回对齐位，与退出淡出同步
-                inputInFront = true
-                onNavigateTab(screen)
-            },
-            containerColor = MaterialTheme.colorScheme.surface,
-            shadowElevation = 8.dp,
-            barHeight = 56.dp
-        )
-    }
     val viewModel: AiChatViewModel = viewModel(
         factory = AiChatViewModel.provideFactory(
             container.questionRepository,
@@ -109,7 +96,7 @@ fun AiChatRoute(
         activeQuestionId = null
         activeConversationId = null
         newChatToken++
-        inputInFront = true
+        onResetInputFront()
     }
 
     // “追问”跳转：就该题打开/复用会话并置为当前
@@ -119,6 +106,7 @@ fun AiChatRoute(
         val convId = container.conversationRepository.getOrCreateForQuestion(qId, q?.question.orEmpty())
         activeQuestionId = qId
         activeConversationId = convId
+        onResetInputFront()
         onPendingConsumed()
     }
 
@@ -159,9 +147,7 @@ fun AiChatRoute(
             newChatToken = newChatToken,
             onOpenDrawer = { scope.launch { drawerState.open() } },
             onNewChat = startFreeChat,
-            tabs = tabs,
-            inputInFront = inputInFront,
-            onInputInFrontChange = { inputInFront = it }
+            registerInputContent = registerInputContent
         )
     }
 }
@@ -175,13 +161,12 @@ private fun AiChatConversation(
     newChatToken: Int,
     onOpenDrawer: () -> Unit,
     onNewChat: () -> Unit,
-    tabs: @Composable () -> Unit,
-    inputInFront: Boolean,
-    onInputInFrontChange: (Boolean) -> Unit
+    registerInputContent: ((@Composable () -> Unit)?) -> Unit
 ) {
+    // conversationId 为空的新对话用 token 区分，保证每次“新对话”是全新的 VM
+    val chatKey = "chat:${conversationId ?: "new"}:$questionId:$newChatToken"
     val viewModel: ChatViewModel = viewModel(
-        // conversationId 为空的新对话用 token 区分，保证每次“新对话”是全新的 VM
-        key = "chat:${conversationId ?: "new"}:$questionId:$newChatToken",
+        key = chatKey,
         factory = ChatViewModel.provideFactory(
             initialConversationId = conversationId,
             questionId = questionId,
@@ -197,6 +182,26 @@ private fun AiChatConversation(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
 
+    // 输入内容随会话（chatKey）切换而重置
+    var input by rememberSaveable(chatKey) { mutableStateOf("") }
+
+    // 把输入胶囊内容登记到 app 级常驻 dock；会话切换时替换、离开对话页时注销。
+    // 该 lambda 在 dock 的组合作用域中执行，会订阅 input / sending 状态，输入即时更新。
+    DisposableEffect(chatKey) {
+        registerInputContent {
+            CompactChatInput(
+                input = input,
+                onInputChange = { input = it },
+                sending = sending,
+                onSend = {
+                    viewModel.send(input)
+                    input = ""
+                }
+            )
+        }
+        onDispose { registerInputContent(null) }
+    }
+
     FollowUpScreen(
         question = question,
         // 会话历史/切换交给抽屉，这里不用页内会话切换器
@@ -207,16 +212,12 @@ private fun AiChatConversation(
         error = error,
         notice = notice,
         onBack = {},
-        onSend = viewModel::send,
         onUpdateAnswer = viewModel::updateAnswerFromDiscussion,
         onNewSession = onNewChat,
         onSwitchSession = {},
         onConsumeError = viewModel::consumeError,
         onConsumeNotice = viewModel::consumeNotice,
-        onOpenDrawer = onOpenDrawer,
-        bottomTabs = tabs,
-        dockInputInFront = inputInFront,
-        onDockInputInFrontChange = onInputInFrontChange
+        onOpenDrawer = onOpenDrawer
     )
 }
 

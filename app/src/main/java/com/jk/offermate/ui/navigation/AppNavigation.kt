@@ -65,13 +65,22 @@ fun OfferMateApp(
     // 从帖子/题目卡片“追问”跳转到 AI 对话 Tab 时携带的题目 id（一次性）
     var pendingChatQuestionId by remember { mutableStateOf<String?>(null) }
 
+    // AI 对话页登记进来的输入胶囊内容；非空即当前在对话页，dock 显示堆叠输入胶囊。
+    var chatInputContent by remember { mutableStateOf<(@Composable () -> Unit)?>(null) }
+    // dock 中输入胶囊是否在前（探头切换用），提升到 app 级，切页时保持不重建。
+    var dockInputInFront by remember { mutableStateOf(true) }
+
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    // 全局浮动底栏只在 Home/Quiz 展示；AI 对话页在其底部 dock 里自绘 Tab（与输入条堆叠）。
-    val showBottomBar = currentDestination?.route in setOf(Screen.Home.route, Screen.Quiz.route)
+    // 底部 dock 只在三个 Tab 页显示（Home/Quiz/AI 对话）；详情页（题目/设置等）不显示。
+    val showDock = currentDestination?.route in
+        setOf(Screen.Home.route, Screen.Quiz.route, Screen.AiChat.route)
+    val onAiChat = currentDestination?.route == Screen.AiChat.route
 
-    // Tab 切换动作（AI 对话 dock 内的 TabPill 也复用）
+    // Tab 切换动作
     val navigateTab: (Screen) -> Unit = { screen ->
+        // 离开对话页时输入胶囊归位到前台，下次进入默认显示输入
+        dockInputInFront = true
         navController.navigate(screen.route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
@@ -83,23 +92,25 @@ fun OfferMateApp(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            // 全局底栏随页面切换同步淡入淡出，避免与内容渐变不同步造成的割裂
-            androidx.compose.animation.AnimatedVisibility(
-                visible = showBottomBar,
-                enter = fadeIn(tween(220)),
-                exit = fadeOut(tween(220))
-            ) {
-                FloatingBottomBar(
+            // 唯一常驻的底部 dock：Tab 胶囊作为单一实例存在于三个 Tab 页，切页不重建、不闪。
+            if (showDock) {
+                BottomDock(
                     currentDestination = currentDestination,
-                    onNavigate = navigateTab
+                    onNavigate = navigateTab,
+                    // 仅在对话页把输入胶囊叠上来；其余页面 dock 只有 Tab 胶囊。
+                    inputContent = if (onAiChat) chatInputContent else null,
+                    inputInFront = dockInputInFront,
+                    onInputInFrontChange = { dockInputInFront = it }
                 )
             }
         }
     ) { innerPadding ->
-        // 底栏内边距只作用到「有全局底栏」的 Home/Quiz；不作用到 NavHost 根，
-        // 否则切换 Tab 时底栏出现/消失会连带把正在退出的页面重新布局（上移抖动）。
+        // 底栏内边距逐页施加（不加到 NavHost 根），为常驻 dock 预留底部空间；
+        // 详情页 dock 不显示时 innerPadding 底部为 0，不受影响。
         val bottomBarPadding = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
 
+        // 底部 dock（含 Tab 胶囊）现由 bottomBar 常驻、不随页面切换重建，
+        // 因此各页内容统一做淡入淡出即可，底栏保持稳定不闪。
         NavHost(
             navController = navController,
             startDestination = Screen.Home.route,
@@ -137,13 +148,15 @@ fun OfferMateApp(
                 )
             }
             composable(Screen.AiChat.route) {
-                AiChatRoute(
-                    container = container,
-                    currentDestination = currentDestination,
-                    onNavigateTab = navigateTab,
-                    pendingQuestionId = pendingChatQuestionId,
-                    onPendingConsumed = { pendingChatQuestionId = null }
-                )
+                Box(bottomBarPadding) {
+                    AiChatRoute(
+                        container = container,
+                        pendingQuestionId = pendingChatQuestionId,
+                        onPendingConsumed = { pendingChatQuestionId = null },
+                        registerInputContent = { chatInputContent = it },
+                        onResetInputFront = { dockInputInFront = true }
+                    )
+                }
             }
             composable(Screen.Settings.route) {
                 ProfileRoute(container, onBack = { navController.popBackStack() })
@@ -168,26 +181,6 @@ fun OfferMateApp(
                 )
             }
         }
-    }
-}
-
-/**
- * 浮动式底部导航栏：圆角、半透明、悬浮于内容之上（用于 Home/Quiz Tab）。
- */
-@Composable
-private fun FloatingBottomBar(
-    currentDestination: androidx.navigation.NavDestination?,
-    onNavigate: (Screen) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        TabPill(currentDestination = currentDestination, onNavigate = onNavigate)
     }
 }
 

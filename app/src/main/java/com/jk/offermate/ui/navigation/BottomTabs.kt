@@ -2,14 +2,20 @@ package com.jk.offermate.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -112,6 +118,116 @@ private fun TabPillItem(
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = contentColor
+            )
+        }
+    }
+}
+
+/** dock 中两个胶囊的统一高度与探头露出高度（供 AI 对话页的紧凑输入胶囊复用）。 */
+internal val DockPillHeight = 56.dp
+internal val DockPeek = 16.dp
+
+/**
+ * 常驻底部 dock：作为唯一的 Tab 胶囊实例存在（Home/Quiz/AI 对话 三个 Tab 共用），
+ * 因此切页时它不重建、不淡入淡出，从根源上消除“两套底栏交叉过渡”的割裂感。
+ *
+ * - [inputContent] 为 null（Home/Quiz）：仅渲染悬浮 Tab 胶囊，定位与原全局底栏一致。
+ * - [inputContent] 非空（AI 对话）：输入胶囊叠在 Tab 胶囊之上，保留原有的探头/前后切换动画。
+ */
+@Composable
+fun BottomDock(
+    currentDestination: NavDestination?,
+    onNavigate: (Screen) -> Unit,
+    inputContent: (@Composable () -> Unit)?,
+    inputInFront: Boolean,
+    onInputInFrontChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tabPill: @Composable () -> Unit = {
+        TabPill(currentDestination = currentDestination, onNavigate = onNavigate)
+    }
+
+    if (inputContent == null) {
+        // 仅 Tab：与原 FloatingBottomBar 完全一致的悬浮定位（左右 24dp、上下 12dp、居中）
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            tabPill()
+        }
+        return
+    }
+
+    // 堆叠 dock：输入胶囊与 Tab 胶囊等高，前者在上、后者在下露出一条边（[DockPeek]）。
+    val inputOffset by animateDpAsState(
+        targetValue = if (inputInFront) 0.dp else DockPeek,
+        animationSpec = tween(220),
+        label = "inputOffset"
+    )
+    val tabsOffset by animateDpAsState(
+        targetValue = if (inputInFront) DockPeek else 0.dp,
+        animationSpec = tween(220),
+        label = "tabsOffset"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            // imePadding 在外、navigationBarsPadding 在内：键盘弹起时上移并消抵与导航栏的重叠
+            .imePadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 12.dp)
+            .height(DockPillHeight + DockPeek)
+    ) {
+        val inputLayer: @Composable () -> Unit = {
+            DockLayer(offsetY = inputOffset, inFront = inputInFront, onTapPeek = { onInputInFrontChange(true) }) {
+                inputContent()
+            }
+        }
+        val tabsLayer: @Composable () -> Unit = {
+            DockLayer(offsetY = tabsOffset, inFront = !inputInFront, onTapPeek = { onInputInFrontChange(false) }) {
+                tabPill()
+            }
+        }
+        // 后画的在上层：把当前在前的那个后画
+        if (inputInFront) {
+            tabsLayer(); inputLayer()
+        } else {
+            inputLayer(); tabsLayer()
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.DockLayer(
+    offsetY: Dp,
+    inFront: Boolean,
+    onTapPeek: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .offset(y = offsetY)
+            .height(DockPillHeight)
+    ) {
+        content()
+        if (!inFront) {
+            // 在后：整块作为切换热区（实际只有露出的探头可点），并拦截内部交互
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(28.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onTapPeek
+                    )
             )
         }
     }

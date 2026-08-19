@@ -70,6 +70,7 @@ import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.Role
 import com.jk.offermate.data.local.entity.ConversationEntity
 import com.jk.offermate.ui.components.MarkdownText
+import com.jk.offermate.ui.navigation.DockPillHeight
 import com.jk.offermate.ui.theme.Indigo
 import com.jk.offermate.ui.theme.IndigoContainer
 import com.jk.offermate.ui.theme.OnIndigoContainer
@@ -93,23 +94,14 @@ fun FollowUpScreen(
     error: String?,
     notice: String?,
     onBack: () -> Unit,
-    onSend: (String) -> Unit,
     onUpdateAnswer: () -> Unit,
     onNewSession: () -> Unit = {},
     onSwitchSession: (String) -> Unit = {},
     onConsumeError: () -> Unit,
     onConsumeNotice: () -> Unit,
     /** 若提供，则顶部栏显示菜单（抽屉）图标而非返回箭头（AI 对话 Tab 内嵌用）。 */
-    onOpenDrawer: (() -> Unit)? = null,
-    /** 若提供，则底部输入条与该 Tab 栏堆叠为可切换的悬浮 dock（AI 对话 Tab 内嵌用）。 */
-    bottomTabs: (@Composable () -> Unit)? = null,
-    /** dock 状态：输入条是否在前（上提到外部，便于离开页面时先归位使 Tab 栏下滑对齐）。 */
-    dockInputInFront: Boolean = true,
-    onDockInputInFrontChange: (Boolean) -> Unit = {}
+    onOpenDrawer: (() -> Unit)? = null
 ) {
-    var input by remember { mutableStateOf("") }
-    var deepThink by remember { mutableStateOf(false) }
-    var webSearch by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -130,7 +122,6 @@ fun FollowUpScreen(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .imePadding()
     ) {
         ChatTopBar(
             title = conversationTitle(conversations, activeConversationId, question),
@@ -227,131 +218,16 @@ fun FollowUpScreen(
             }
             Spacer(Modifier.height(4.dp))
         }
-
-        if (bottomTabs != null) {
-            // AI 对话 Tab：输入条与 Tab 栏堆叠为可切换 dock
-            ChatBottomDock(
-                input = input,
-                onInputChange = { input = it },
-                sending = sending,
-                onSend = {
-                    onSend(input)
-                    input = ""
-                },
-                tabs = bottomTabs,
-                inputInFront = dockInputInFront,
-                onInputInFrontChange = onDockInputInFrontChange
-            )
-        } else {
-            ChatInputBar(
-                input = input,
-                onInputChange = { input = it },
-                sending = sending,
-                deepThink = deepThink,
-                webSearch = webSearch,
-                onToggleDeepThink = { deepThink = !deepThink },
-                onToggleWebSearch = { webSearch = !webSearch },
-                onAdd = onNewSession,
-                onSend = {
-                    onSend(input)
-                    input = ""
-                }
-            )
-        }
+        // 底部输入胶囊已上提到 app 级常驻 dock（见 BottomDock），此处不再渲染。
     }
 }
-
-/** dock 中两个胶囊的统一高度与探头露出高度（高度/边距与全局底栏 TabPill 对齐）。 */
-private val DockPillHeight = 56.dp
-private val DockPeek = 16.dp
 
 /**
- * 底部堆叠 dock：输入胶囊与 Tab 胶囊等高，前者在上、后者在下露出一条边（[DockPeek]）。
- * 点击露出的探头，两者带滑动动画互换前后位置。前面的完全可交互，后面的整块只作为“切换”热区。
+ * 单行紧凑输入胶囊：文本框 + 发送，整体高度与 Tab 胶囊一致。
+ * 供 app 级常驻 dock（[com.jk.offermate.ui.navigation.BottomDock]）作为输入层复用。
  */
 @Composable
-private fun ChatBottomDock(
-    input: String,
-    onInputChange: (String) -> Unit,
-    sending: Boolean,
-    onSend: () -> Unit,
-    tabs: @Composable () -> Unit,
-    inputInFront: Boolean,
-    onInputInFrontChange: (Boolean) -> Unit
-) {
-    val inputOffset by animateDpAsState(
-        targetValue = if (inputInFront) 0.dp else DockPeek,
-        animationSpec = tween(220),
-        label = "inputOffset"
-    )
-    val tabsOffset by animateDpAsState(
-        targetValue = if (inputInFront) DockPeek else 0.dp,
-        animationSpec = tween(220),
-        label = "tabsOffset"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            // 与全局底栏一致：左右 24dp、底部 12dp，使 dock 里的 Tab 胶囊与其它页底栏水平对齐
-            .padding(horizontal = 24.dp)
-            .padding(bottom = 12.dp)
-            .height(DockPillHeight + DockPeek)
-    ) {
-        val inputLayer: @Composable () -> Unit = {
-            DockLayer(offsetY = inputOffset, inFront = inputInFront, onTapPeek = { onInputInFrontChange(true) }) {
-                CompactChatInput(input = input, onInputChange = onInputChange, sending = sending, onSend = onSend)
-            }
-        }
-        val tabsLayer: @Composable () -> Unit = {
-            DockLayer(offsetY = tabsOffset, inFront = !inputInFront, onTapPeek = { onInputInFrontChange(false) }) {
-                tabs()
-            }
-        }
-        // 后画的在上层：把当前在前的那个后画
-        if (inputInFront) {
-            tabsLayer(); inputLayer()
-        } else {
-            inputLayer(); tabsLayer()
-        }
-    }
-}
-
-@Composable
-private fun BoxScope.DockLayer(
-    offsetY: Dp,
-    inFront: Boolean,
-    onTapPeek: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .align(Alignment.TopCenter)
-            .fillMaxWidth()
-            .offset(y = offsetY)
-            .height(DockPillHeight)
-    ) {
-        content()
-        if (!inFront) {
-            // 在后：整块作为切换热区（实际只有露出的探头可点），并拦截内部交互
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .clip(RoundedCornerShape(28.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onTapPeek
-                    )
-            )
-        }
-    }
-}
-
-/** 单行紧凑输入胶囊：文本框 + 发送，整体高度与 Tab 胶囊一致。 */
-@Composable
-private fun CompactChatInput(
+internal fun CompactChatInput(
     input: String,
     onInputChange: (String) -> Unit,
     sending: Boolean,
