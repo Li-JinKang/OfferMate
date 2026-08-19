@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
@@ -90,94 +92,96 @@ fun OfferMateApp(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        bottomBar = {
-            // 唯一常驻的底部 dock：Tab 胶囊作为单一实例存在于三个 Tab 页，切页不重建、不闪。
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+    ) { _ ->
+        // dock 高度（含导航栏内边距），作为内容底部留白：让列表能滚到胶囊下方而非被截断。
+        val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val tabDockReserve = navBottom + 80.dp   // 12(下) + 56(胶囊) + 12(上)
+        val aiDockReserve = navBottom + 84.dp    // 12(下) + 72(输入/Tab 堆叠)
+
+        // 内容全屏铺开，dock 作为悬浮 overlay 叠在其上（真正浮动，不占布局、不截断内容）。
+        Box(Modifier.fillMaxSize()) {
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Home.route,
+                enterTransition = { fadeIn(tween(220)) },
+                exitTransition = { fadeOut(tween(220)) },
+                popEnterTransition = { fadeIn(tween(220)) },
+                popExitTransition = { fadeOut(tween(220)) }
+            ) {
+                composable(Screen.Home.route) {
+                    HomeRoute(
+                        container = container,
+                        onOpenPost = { postId -> navController.navigate("questions/$postId") },
+                        onOpenSettings = { navController.navigate(Screen.Settings.route) },
+                        sharedText = sharedText,
+                        onSharedTextConsumed = onSharedTextConsumed,
+                        contentBottomPadding = tabDockReserve
+                    )
+                }
+                composable(Screen.Quiz.route) {
+                    QuizRoute(
+                        container,
+                        onOpenCategory = { name ->
+                            navController.navigate("quizCategory/${android.net.Uri.encode(name)}")
+                        },
+                        contentBottomPadding = tabDockReserve
+                    )
+                }
+                composable(
+                    route = "quizCategory/{category}",
+                    arguments = listOf(navArgument("category") { type = NavType.StringType })
+                ) { entry ->
+                    QuizCategoryRoute(
+                        container = container,
+                        category = entry.arguments?.getString("category").orEmpty(),
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable(Screen.AiChat.route) {
+                    AiChatRoute(
+                        container = container,
+                        pendingQuestionId = pendingChatQuestionId,
+                        onPendingConsumed = { pendingChatQuestionId = null },
+                        registerInputContent = { chatInputContent = it },
+                        onResetInputFront = { dockInputInFront = true },
+                        contentBottomPadding = aiDockReserve
+                    )
+                }
+                composable(Screen.Settings.route) {
+                    ProfileRoute(container, onBack = { navController.popBackStack() })
+                }
+                composable(
+                    route = "questions/{postId}",
+                    arguments = listOf(navArgument("postId") { type = NavType.StringType })
+                ) { entry ->
+                    QuestionsRoute(
+                        container = container,
+                        postId = entry.arguments?.getString("postId").orEmpty(),
+                        onBack = { navController.popBackStack() },
+                        // 追问不再单独维护对话页：携带题目 id 跳到 AI 对话 Tab
+                        onFollowUp = { questionId ->
+                            pendingChatQuestionId = questionId
+                            navController.navigate(Screen.AiChat.route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                }
+            }
+
+            // 唯一常驻的悬浮 dock：叠在内容之上，仅胶囊本身可见/可点，空白区触摸穿透到下层内容。
             if (showDock) {
                 BottomDock(
+                    modifier = Modifier.align(Alignment.BottomCenter),
                     currentDestination = currentDestination,
                     onNavigate = navigateTab,
                     // 仅在对话页把输入胶囊叠上来；其余页面 dock 只有 Tab 胶囊。
                     inputContent = if (onAiChat) chatInputContent else null,
                     inputInFront = dockInputInFront,
                     onInputInFrontChange = { dockInputInFront = it }
-                )
-            }
-        }
-    ) { innerPadding ->
-        // 底栏内边距逐页施加（不加到 NavHost 根），为常驻 dock 预留底部空间；
-        // 详情页 dock 不显示时 innerPadding 底部为 0，不受影响。
-        val bottomBarPadding = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
-
-        // 底部 dock（含 Tab 胶囊）现由 bottomBar 常驻、不随页面切换重建，
-        // 因此各页内容统一做淡入淡出即可，底栏保持稳定不闪。
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Home.route,
-            enterTransition = { fadeIn(tween(220)) },
-            exitTransition = { fadeOut(tween(220)) },
-            popEnterTransition = { fadeIn(tween(220)) },
-            popExitTransition = { fadeOut(tween(220)) }
-        ) {
-            composable(Screen.Home.route) {
-                Box(bottomBarPadding) {
-                    HomeRoute(
-                        container = container,
-                        onOpenPost = { postId -> navController.navigate("questions/$postId") },
-                        onOpenSettings = { navController.navigate(Screen.Settings.route) },
-                        sharedText = sharedText,
-                        onSharedTextConsumed = onSharedTextConsumed
-                    )
-                }
-            }
-            composable(Screen.Quiz.route) {
-                Box(bottomBarPadding) {
-                    QuizRoute(container, onOpenCategory = { name ->
-                        navController.navigate("quizCategory/${android.net.Uri.encode(name)}")
-                    })
-                }
-            }
-            composable(
-                route = "quizCategory/{category}",
-                arguments = listOf(navArgument("category") { type = NavType.StringType })
-            ) { entry ->
-                QuizCategoryRoute(
-                    container = container,
-                    category = entry.arguments?.getString("category").orEmpty(),
-                    onBack = { navController.popBackStack() }
-                )
-            }
-            composable(Screen.AiChat.route) {
-                Box(bottomBarPadding) {
-                    AiChatRoute(
-                        container = container,
-                        pendingQuestionId = pendingChatQuestionId,
-                        onPendingConsumed = { pendingChatQuestionId = null },
-                        registerInputContent = { chatInputContent = it },
-                        onResetInputFront = { dockInputInFront = true }
-                    )
-                }
-            }
-            composable(Screen.Settings.route) {
-                ProfileRoute(container, onBack = { navController.popBackStack() })
-            }
-            composable(
-                route = "questions/{postId}",
-                arguments = listOf(navArgument("postId") { type = NavType.StringType })
-            ) { entry ->
-                QuestionsRoute(
-                    container = container,
-                    postId = entry.arguments?.getString("postId").orEmpty(),
-                    onBack = { navController.popBackStack() },
-                    // 追问不再单独维护对话页：携带题目 id 跳到 AI 对话 Tab
-                    onFollowUp = { questionId ->
-                        pendingChatQuestionId = questionId
-                        navController.navigate(Screen.AiChat.route) {
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
                 )
             }
         }

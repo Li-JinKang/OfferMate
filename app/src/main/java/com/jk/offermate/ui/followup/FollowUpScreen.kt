@@ -100,7 +100,9 @@ fun FollowUpScreen(
     onConsumeError: () -> Unit,
     onConsumeNotice: () -> Unit,
     /** 若提供，则顶部栏显示菜单（抽屉）图标而非返回箭头（AI 对话 Tab 内嵌用）。 */
-    onOpenDrawer: (() -> Unit)? = null
+    onOpenDrawer: (() -> Unit)? = null,
+    /** 内容底部留白：为悬浮 dock（输入胶囊 + Tab 胶囊）预留空间。 */
+    contentBottomPadding: Dp = 0.dp
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -122,6 +124,9 @@ fun FollowUpScreen(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            // 键盘弹起时整体上移；底部留白为悬浮输入 dock 预留空间
+            .imePadding()
+            .padding(bottom = contentBottomPadding)
     ) {
         ChatTopBar(
             title = conversationTitle(conversations, activeConversationId, question),

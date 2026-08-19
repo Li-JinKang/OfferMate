@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -72,7 +73,8 @@ fun HomeRoute(
     onOpenPost: (String) -> Unit,
     onOpenSettings: () -> Unit = {},
     sharedText: String? = null,
-    onSharedTextConsumed: () -> Unit = {}
+    onSharedTextConsumed: () -> Unit = {},
+    contentBottomPadding: Dp = 0.dp
 ) {
     val viewModel: HomeViewModel = viewModel(
         factory = HomeViewModel.provideFactory(
@@ -111,7 +113,8 @@ fun HomeRoute(
         onOpenPost = { post -> onOpenPost(post.id) },
         onOpenSettings = onOpenSettings,
         onTogglePin = viewModel::onTogglePin,
-        onDelete = viewModel::onDelete
+        onDelete = viewModel::onDelete,
+        contentBottomPadding = contentBottomPadding
     )
 }
 
@@ -126,14 +129,16 @@ fun HomeScreen(
     onOpenPost: (Post) -> Unit,
     onOpenSettings: () -> Unit,
     onTogglePin: (Post) -> Unit,
-    onDelete: (String) -> Unit
+    onDelete: (String) -> Unit,
+    contentBottomPadding: Dp = 0.dp
 ) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding(),
-        contentPadding = PaddingValues(16.dp),
+        // 底部留白为悬浮 dock 预留空间，内容可滚动穿过其下方
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + contentBottomPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
@@ -413,20 +418,6 @@ private fun PostCard(post: Post, onOpen: () -> Unit) {
                     color = TextSecondary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "已智能解析 ${post.parsedQuestionCount} 道核心题",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    "去刷此篇 ›",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }

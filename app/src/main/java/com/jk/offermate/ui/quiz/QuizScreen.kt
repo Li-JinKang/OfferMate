@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -66,7 +67,11 @@ internal fun categoryColor(category: String?): Color {
 }
 
 @Composable
-fun QuizRoute(container: AppContainer, onOpenCategory: (String) -> Unit) {
+fun QuizRoute(
+    container: AppContainer,
+    onOpenCategory: (String) -> Unit,
+    contentBottomPadding: Dp = 0.dp
+) {
     val viewModel: QuizViewModel = viewModel(
         factory = QuizViewModel.provideFactory(container.questionRepository, container.categoryRepository)
     )
@@ -76,7 +81,8 @@ fun QuizRoute(container: AppContainer, onOpenCategory: (String) -> Unit) {
         onQueryChange = viewModel::onQueryChange,
         onOpenCategory = onOpenCategory,
         onAddCategory = viewModel::addCategory,
-        onAddQuestion = viewModel::addManualQuestion
+        onAddQuestion = viewModel::addManualQuestion,
+        contentBottomPadding = contentBottomPadding
     )
 }
 
@@ -86,7 +92,8 @@ fun QuizOverviewScreen(
     onQueryChange: (String) -> Unit,
     onOpenCategory: (String) -> Unit,
     onAddCategory: (String) -> Unit,
-    onAddQuestion: (String, String, String, Difficulty) -> Unit
+    onAddQuestion: (String, String, String, Difficulty) -> Unit,
+    contentBottomPadding: Dp = 0.dp
 ) {
     var showAddCategory by remember { mutableStateOf(false) }
     var showAddQuestion by remember { mutableStateOf(false) }
@@ -97,7 +104,6 @@ fun QuizOverviewScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .navigationBarsPadding()
     ) {
         QuizHeader(
             query = state.query,
@@ -176,6 +182,9 @@ fun QuizOverviewScreen(
                 }
             }
         }
+
+        // 底部留白：为悬浮 dock 预留空间，内容可滚动穿过其下方
+        Spacer(Modifier.height(contentBottomPadding))
     }
 
     if (showAddCategory) {

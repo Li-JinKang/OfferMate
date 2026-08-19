@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -71,7 +72,9 @@ fun AiChatRoute(
     /** 把当前会话的输入胶囊内容登记到 app 级常驻 dock；离开页面时以 null 注销。 */
     registerInputContent: ((@Composable () -> Unit)?) -> Unit = {},
     /** 请求把 dock 的输入胶囊归位到前台（新对话/切换会话时用）。 */
-    onResetInputFront: () -> Unit = {}
+    onResetInputFront: () -> Unit = {},
+    /** 内容底部留白：为悬浮 dock 预留空间。 */
+    contentBottomPadding: Dp = 0.dp
 ) {
     val viewModel: AiChatViewModel = viewModel(
         factory = AiChatViewModel.provideFactory(
@@ -147,7 +150,8 @@ fun AiChatRoute(
             newChatToken = newChatToken,
             onOpenDrawer = { scope.launch { drawerState.open() } },
             onNewChat = startFreeChat,
-            registerInputContent = registerInputContent
+            registerInputContent = registerInputContent,
+            contentBottomPadding = contentBottomPadding
         )
     }
 }
@@ -161,7 +165,8 @@ private fun AiChatConversation(
     newChatToken: Int,
     onOpenDrawer: () -> Unit,
     onNewChat: () -> Unit,
-    registerInputContent: ((@Composable () -> Unit)?) -> Unit
+    registerInputContent: ((@Composable () -> Unit)?) -> Unit,
+    contentBottomPadding: Dp = 0.dp
 ) {
     // conversationId 为空的新对话用 token 区分，保证每次“新对话”是全新的 VM
     val chatKey = "chat:${conversationId ?: "new"}:$questionId:$newChatToken"
@@ -217,7 +222,8 @@ private fun AiChatConversation(
         onSwitchSession = {},
         onConsumeError = viewModel::consumeError,
         onConsumeNotice = viewModel::consumeNotice,
-        onOpenDrawer = onOpenDrawer
+        onOpenDrawer = onOpenDrawer,
+        contentBottomPadding = contentBottomPadding
     )
 }
 
