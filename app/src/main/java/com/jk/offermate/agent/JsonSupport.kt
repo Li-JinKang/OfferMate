@@ -52,8 +52,21 @@ internal object JsonSupport {
     private fun scanBalanced(s: String): String? {
         val start = s.indexOfFirst { it == '{' || it == '[' }
         if (start < 0) return null
+        return scanBalancedFrom(s, start)
+    }
+
+    /**
+     * 从 [start]（须为 `{` 或 `[`）起，按引号/转义感知的配平扫描，返回到匹配收尾符的子串。
+     * 若到字符串末尾仍未配平（例如响应被截断）返回 null。
+     */
+    private fun scanBalancedFrom(s: String, start: Int): String? {
+        if (start < 0 || start >= s.length) return null
         val open = s[start]
-        val close = if (open == '{') '}' else ']'
+        val close = when (open) {
+            '{' -> '}'
+            '[' -> ']'
+            else -> return null
+        }
         var depth = 0
         var inString = false
         var escaped = false
@@ -79,5 +92,39 @@ internal object JsonSupport {
             i++
         }
         return null
+    }
+
+    /**
+     * 从（可能被截断的）模型输出中，尽力抢救出 `answers` 数组里**已完整闭合**的对象。
+     *
+     * 用途：当整段 JSON 因输出超长被截断而无法整体解析时，仍能保住已经生成完的那些答案，
+     * 避免"最后一题没写完 → 整批全丢"。逐个对象做配平扫描，遇到第一个无法闭合（截断处）即停止。
+     */
+    fun salvageObjects(raw: String): List<kotlinx.serialization.json.JsonObject> {
+        val arrayStart = findArrayStartAfterKey(raw, "answers")
+            ?: raw.indexOf('[').takeIf { it >= 0 }
+            ?: return emptyList()
+
+        val objects = ArrayList<kotlinx.serialization.json.JsonObject>()
+        var i = arrayStart + 1
+        while (i < raw.length) {
+            val objStart = raw.indexOf('{', i)
+            if (objStart < 0) break
+            val block = scanBalancedFrom(raw, objStart) ?: break // 截断处无法闭合 → 停止
+            runCatching { json.parseToJsonElement(block) }
+                .getOrNull()
+                ?.let { it as? kotlinx.serialization.json.JsonObject }
+                ?.let { objects.add(it) }
+            i = objStart + block.length
+        }
+        return objects
+    }
+
+    /** 定位形如 `"key" : [` 的数组起始 `[` 下标（引号/转义无关的宽松查找）。 */
+    private fun findArrayStartAfterKey(raw: String, key: String): Int? {
+        val keyIdx = raw.indexOf("\"$key\"")
+        if (keyIdx < 0) return null
+        val bracket = raw.indexOf('[', keyIdx)
+        return bracket.takeIf { it >= 0 }
     }
 }

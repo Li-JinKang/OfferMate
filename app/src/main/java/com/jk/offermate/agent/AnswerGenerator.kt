@@ -88,23 +88,27 @@ class AnswerGenerator(
         }
 
     fun parse(raw: String, relevant: List<RelevanceResult>): List<AnsweredQuestion> {
-        val jsonText = JsonSupport.extractJsonBlock(raw)
-            ?: throw AiException("模型输出中未找到有效 JSON：${raw.take(200)}")
+        // 正常路径：截出完整 JSON 并解析出 answers 数组。
+        val parsedArray: JsonArray? = JsonSupport.extractJsonBlock(raw)
+            ?.let { runCatching { JsonSupport.json.parseToJsonElement(it) }.getOrNull() }
+            ?.let { element ->
+                when {
+                    element is JsonArray -> element
+                    element is JsonObject && element["answers"] is JsonArray -> element["answers"]!!.jsonArray
+                    else -> null
+                }
+            }
 
-        val element = try {
-            JsonSupport.json.parseToJsonElement(jsonText)
-        } catch (e: Exception) {
-            throw AiException("JSON 解析失败：${jsonText.take(200)}", e)
+        // 抢救路径：整体无法解析（多为输出超长被截断）时，尽量捞回已写完的答案对象，
+        // 避免"最后一题没写完 → 整批全丢"。
+        val objects: List<JsonObject> = parsedArray?.filterIsInstance<JsonObject>()
+            ?: JsonSupport.salvageObjects(raw)
+
+        if (objects.isEmpty()) {
+            throw AiException("模型输出中未找到有效答案 JSON：${raw.take(200)}")
         }
 
-        val array: JsonArray = when {
-            element is JsonArray -> element
-            element is JsonObject && element["answers"] is JsonArray -> element["answers"]!!.jsonArray
-            else -> throw AiException("JSON 结构不符合预期（缺少 answers 数组）")
-        }
-
-        return array.mapNotNull { item ->
-            val obj = item as? JsonObject ?: return@mapNotNull null
+        return objects.mapNotNull { obj ->
             val index = obj["index"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
             val relevanceResult = relevant.getOrNull(index) ?: return@mapNotNull null
             val answer = obj["answer"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()

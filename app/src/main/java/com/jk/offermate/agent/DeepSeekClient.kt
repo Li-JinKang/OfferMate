@@ -66,6 +66,8 @@ class DeepSeekClient(
         val obj = buildJsonObject {
             put("model", model)
             put("stream", false)
+            // 显式拉高输出上限：默认 4096 容易在多题长答案时被截断导致 JSON 不完整。
+            put("max_tokens", MAX_OUTPUT_TOKENS)
             putJsonArray("messages") { messages.forEach { serializeMessage(it) } }
             if (tools.isNotEmpty()) {
                 putJsonArray("tools") {
@@ -161,6 +163,9 @@ class DeepSeekClient(
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+        /** DeepSeek 支持的最大输出 token（deepseek-chat 上限 8192），显式拉满以防截断。 */
+        const val MAX_OUTPUT_TOKENS = 8192
 
         /** DeepSeek 生成长文本较慢，给足读超时，避免 SocketTimeout。 */
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
