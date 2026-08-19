@@ -1,5 +1,7 @@
 package com.jk.offermate.ui.navigation
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -101,13 +103,28 @@ fun OfferMateApp(
 
         // 内容全屏铺开，dock 作为悬浮 overlay 叠在其上（真正浮动，不占布局、不截断内容）。
         Box(Modifier.fillMaxSize()) {
+            // 底栏常驻不重建。Tab 之间切换做瞬时（更跟手）；进出详情页仍保留淡入淡出体现层级。
+            val tabRoutes = setOf(Screen.Home.route, Screen.Quiz.route, Screen.AiChat.route)
+            fun androidx.navigation.NavBackStackEntry.isTab() = destination.route in tabRoutes
             NavHost(
                 navController = navController,
                 startDestination = Screen.Home.route,
-                enterTransition = { fadeIn(tween(220)) },
-                exitTransition = { fadeOut(tween(220)) },
-                popEnterTransition = { fadeIn(tween(220)) },
-                popExitTransition = { fadeOut(tween(220)) }
+                enterTransition = {
+                    if (initialState.isTab() && targetState.isTab()) EnterTransition.None
+                    else fadeIn(tween(220))
+                },
+                exitTransition = {
+                    if (initialState.isTab() && targetState.isTab()) ExitTransition.None
+                    else fadeOut(tween(220))
+                },
+                popEnterTransition = {
+                    if (initialState.isTab() && targetState.isTab()) EnterTransition.None
+                    else fadeIn(tween(220))
+                },
+                popExitTransition = {
+                    if (initialState.isTab() && targetState.isTab()) ExitTransition.None
+                    else fadeOut(tween(220))
+                }
             ) {
                 composable(Screen.Home.route) {
                     HomeRoute(
