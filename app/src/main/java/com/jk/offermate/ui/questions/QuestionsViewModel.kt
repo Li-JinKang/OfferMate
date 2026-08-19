@@ -31,6 +31,11 @@ class QuestionsViewModel(
         viewModelScope.launch { questionRepository.setPracticed(q.id, !q.practiced) }
     }
 
+    fun deleteQuestion(q: AnsweredQuestion) {
+        if (q.id.isBlank()) return
+        viewModelScope.launch { questionRepository.deleteQuestion(q.id) }
+    }
+
     companion object {
         fun provideFactory(questionRepository: QuestionRepository, postId: String) = viewModelFactory {
             initializer { QuestionsViewModel(questionRepository, postId) }

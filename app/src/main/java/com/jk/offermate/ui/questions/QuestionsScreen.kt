@@ -24,6 +24,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.AnsweredQuestionCard
+import com.jk.offermate.ui.components.SwipeableActionCard
 import com.jk.offermate.ui.quiz.categoryColor
 import com.jk.offermate.ui.theme.TextSecondary
 
@@ -42,6 +43,7 @@ fun QuestionsRoute(
         questions = questions,
         onBack = onBack,
         onTogglePracticed = viewModel::togglePracticed,
+        onDelete = viewModel::deleteQuestion,
         onFollowUp = onFollowUp
     )
 }
@@ -51,6 +53,7 @@ fun QuestionsScreen(
     questions: List<AnsweredQuestion>,
     onBack: () -> Unit,
     onTogglePracticed: (AnsweredQuestion) -> Unit,
+    onDelete: (AnsweredQuestion) -> Unit = {},
     onFollowUp: (String) -> Unit = {}
 ) {
     Column(
@@ -77,12 +80,14 @@ fun QuestionsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(questions, key = { it.id.ifEmpty { it.question } }) { q ->
-                    AnsweredQuestionCard(
-                        q = q,
-                        borderColor = categoryColor(q.tags.firstOrNull()),
-                        onTogglePracticed = { onTogglePracticed(q) },
-                        onFollowUp = q.id.takeIf { it.isNotBlank() }?.let { id -> { onFollowUp(id) } }
-                    )
+                    SwipeableActionCard(onDelete = { onDelete(q) }) {
+                        AnsweredQuestionCard(
+                            q = q,
+                            borderColor = categoryColor(q.tags.firstOrNull()),
+                            onTogglePracticed = { onTogglePracticed(q) },
+                            onFollowUp = q.id.takeIf { it.isNotBlank() }?.let { id -> { onFollowUp(id) } }
+                        )
+                    }
                 }
             }
         }

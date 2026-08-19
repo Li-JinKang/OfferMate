@@ -34,6 +34,9 @@ import kotlin.math.roundToInt
 /** 与卡片（PostCard / AnsweredQuestionCard）一致的圆角，用于裁剪露出的动作区。 */
 private val CardCornerRadius = 16.dp
 
+/** 删除按钮底色。 */
+private val DeleteRed = Color(0xFFE5484D)
+
 /**
  * 左划露出操作的卡片容器。向左拖动露出右侧按钮，超过一半吸附展开，否则回弹。
  *
@@ -54,13 +57,17 @@ fun SwipeableActionCard(
     val actionCount = if (onTogglePin != null) 2 else 1
     val maxOffsetPx = with(density) { (actionWidth * actionCount).toPx() }
     val offsetX = remember { Animatable(0f) }
+    // 紧挨卡片的那个按钮（最左）的底色：用它铺满整条动作区，
+    // 填补卡片右侧圆角与按钮直角之间的月牙空白，视觉上更协调。
+    val stripColor = if (onTogglePin != null) Indigo else DeleteRed
 
     Box(modifier.fillMaxWidth()) {
-        // 动作区裁成与卡片一致的圆角，避免卡片圆角处透出按钮的直角色块
+        // 动作区裁成与卡片一致的圆角，并铺上最左按钮底色（填满圆角处空白）
         Row(
             Modifier
                 .matchParentSize()
-                .clip(RoundedCornerShape(CardCornerRadius)),
+                .clip(RoundedCornerShape(CardCornerRadius))
+                .background(stripColor),
             horizontalArrangement = Arrangement.End
         ) {
             if (onTogglePin != null) {
@@ -69,7 +76,7 @@ fun SwipeableActionCard(
                     onTogglePin()
                 }
             }
-            ActionCell("删除", Color(0xFFE5484D), actionWidth) {
+            ActionCell("删除", DeleteRed, actionWidth) {
                 scope.launch { offsetX.animateTo(0f) }
                 onDelete()
             }
