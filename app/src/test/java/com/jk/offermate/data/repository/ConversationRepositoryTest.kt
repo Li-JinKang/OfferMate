@@ -2,6 +2,7 @@ package com.jk.offermate.data.repository
 
 import com.jk.offermate.agent.Role
 import com.jk.offermate.data.local.dao.ConversationDao
+import com.jk.offermate.data.local.dao.ConversationSearchRow
 import com.jk.offermate.data.local.dao.ConversationSummaryRow
 import com.jk.offermate.data.local.entity.ChatMessageEntity
 import com.jk.offermate.data.local.entity.ConversationEntity
@@ -65,6 +66,12 @@ class ConversationRepositoryTest {
 
         override suspend fun messagesOf(conversationId: String): List<ChatMessageEntity> =
             messages.value.filter { it.conversationId == conversationId }
+
+        override fun search(kw: String, limit: Int): Flow<List<ConversationSearchRow>> =
+            conversations.map { emptyList() }
+
+        override suspend fun messagePositionOf(conversationId: String, messageId: Long): Int =
+            messages.value.count { it.conversationId == conversationId && it.id <= messageId }
 
         override suspend fun insertMessage(message: ChatMessageEntity) {
             messages.value = messages.value + message.copy(id = autoId++)

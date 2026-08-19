@@ -5,12 +5,19 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jk.offermate.data.repository.ConversationRepository
+import com.jk.offermate.data.repository.ConversationSearchHit
 import com.jk.offermate.data.repository.QuestionRepository
 import com.jk.offermate.ui.quiz.CategoryResolver
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 
 /** 抽屉里的一条历史对话（[questionId] 为空即自由对话）。 */
@@ -18,7 +25,11 @@ data class ConversationHistoryItem(
     val conversationId: String,
     val questionId: String?,
     val title: String,
-    val updatedAt: Long
+    val updatedAt: Long,
+    /** 搜索命中的消息片段（仅内容命中时有值；标题命中或非搜索态为 null）。 */
+    val snippet: String? = null,
+    /** 命中消息 id（用于打开会话后滚动定位；无内容命中为 null）。 */
+    val hitMessageId: Long? = null
 )
 
 /** 抽屉里"开始新对话"可选的题目。 */
@@ -49,25 +60,44 @@ class AiChatViewModel(
 
     private val query = MutableStateFlow("")
 
+    // 搜索态的历史命中走 DB LIKE（含消息内容）；null 表示非搜索态，用全部会话。
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    private val hits: Flow<List<ConversationSearchHit>?> =
+        query
+            .debounce { q -> if (q.isBlank()) 0L else 250L }
+            .flatMapLatest { q ->
+                if (q.isBlank()) flowOf(null) else conversationRepository.searchConversations(q)
+            }
+
     val uiState: StateFlow<AiChatDrawerState> =
         combine(
             conversationRepository.observeAllConversations(),
             questionRepository.observeAll(),
-            query
-        ) { conversations, questions, q ->
+            query,
+            hits
+        ) { conversations, questions, q, searchHits ->
             val keyword = q.trim()
             val questionById = questions.associateBy { it.id }
+            fun titleOf(title: String, questionId: String?): String =
+                title.ifBlank { questionId?.let { questionById[it]?.question } ?: "新对话" }
 
             val allHistory = conversations.map { c ->
-                val title = c.title.ifBlank {
-                    c.questionId?.let { questionById[it]?.question } ?: "新对话"
-                }
-                ConversationHistoryItem(c.id, c.questionId, title, c.updatedAt)
+                ConversationHistoryItem(c.id, c.questionId, titleOf(c.title, c.questionId), c.updatedAt)
             }
-            val history = if (keyword.isEmpty()) {
+            // 非搜索态用全部会话；搜索态用按内容命中的结果（带片段与命中消息 id）
+            val history = if (searchHits == null) {
                 allHistory
             } else {
-                allHistory.filter { it.title.contains(keyword, ignoreCase = true) }
+                searchHits.map { h ->
+                    ConversationHistoryItem(
+                        conversationId = h.conversationId,
+                        questionId = h.questionId,
+                        title = titleOf(h.title, h.questionId),
+                        updatedAt = h.updatedAt,
+                        snippet = h.snippet,
+                        hitMessageId = h.hitMessageId
+                    )
+                }
             }
 
             val candidates = questions

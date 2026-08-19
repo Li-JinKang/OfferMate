@@ -102,13 +102,26 @@ fun FollowUpScreen(
     /** 若提供，则顶部栏显示菜单（抽屉）图标而非返回箭头（AI 对话 Tab 内嵌用）。 */
     onOpenDrawer: (() -> Unit)? = null,
     /** 内容底部留白：为悬浮 dock（输入胶囊 + Tab 胶囊）预留空间。 */
-    contentBottomPadding: Dp = 0.dp
+    contentBottomPadding: Dp = 0.dp,
+    /** 从搜索结果进入时，要定位到的消息下标；非空则打开后滚动到该条而非底部。 */
+    scrollToIndex: Int? = null,
+    /** 定位完成回调（消费一次性目标）。 */
+    onScrollConsumed: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
+    // 有搜索跳转目标时优先定位到命中消息；否则新消息到达时自动滚到底部。
+    LaunchedEffect(scrollToIndex, messages.size) {
+        if (scrollToIndex != null && messages.isNotEmpty()) {
+            listState.scrollToItem(scrollToIndex.coerceIn(0, messages.lastIndex))
+            onScrollConsumed()
+        }
+    }
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+        if (scrollToIndex == null && messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
     }
 
     // 是否显示“回到底部”悬浮按钮：最后一条消息未完全可见时显示

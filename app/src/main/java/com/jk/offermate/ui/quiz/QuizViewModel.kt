@@ -8,10 +8,15 @@ import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.agent.Difficulty
 import com.jk.offermate.data.repository.CategoryRepository
 import com.jk.offermate.data.repository.QuestionRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -41,12 +46,21 @@ class QuizViewModel(
 
     private val query = MutableStateFlow("")
 
+    // 搜索命中走 DB LIKE：query 防抖后按最新词查库，不再把全表拉进内存过滤。
+    // 空词立即返回（不延迟首屏），非空词防抖 250ms 避免逐键查库。
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    private val results: Flow<List<AnsweredQuestion>> =
+        query
+            .debounce { q -> if (q.isBlank()) 0L else 250L }
+            .flatMapLatest { q -> questionRepository.search(q) }
+
     val uiState: StateFlow<QuizOverviewState> =
         combine(
             questionRepository.observeAll(),
             categoryRepository.observeCategories(),
-            query
-        ) { questions, userCategories, q ->
+            query,
+            results
+        ) { questions, userCategories, q, searchResults ->
             val groups = questions.groupBy { CategoryResolver.displayCategory(it) }
             val fromQuestions = groups.map { (name, qs) ->
                 CategorySummary(name = name, total = qs.size, practiced = qs.count { it.practiced })
@@ -56,21 +70,10 @@ class QuizViewModel(
                 .filter { it !in groups.keys }
                 .map { CategorySummary(name = it, total = 0, practiced = 0) }
 
-            val keyword = q.trim()
-            val results = if (keyword.isEmpty()) {
-                emptyList()
-            } else {
-                questions.filter { question ->
-                    question.question.contains(keyword, ignoreCase = true) ||
-                        CategoryResolver.displayCategory(question).contains(keyword, ignoreCase = true) ||
-                        question.tags.any { it.contains(keyword, ignoreCase = true) }
-                }
-            }
-
             QuizOverviewState(
                 categories = (fromQuestions + emptyOnes).sortedByDescending { it.total },
                 query = q,
-                results = results
+                results = searchResults
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), QuizOverviewState())
 

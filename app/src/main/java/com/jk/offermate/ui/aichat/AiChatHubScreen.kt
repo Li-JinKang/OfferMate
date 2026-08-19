@@ -58,6 +58,7 @@ import com.jk.offermate.ui.followup.CompactChatInput
 import com.jk.offermate.ui.followup.FollowUpScreen
 import com.jk.offermate.ui.quiz.categoryColor
 import com.jk.offermate.ui.theme.TextPrimary
+import com.jk.offermate.ui.components.highlightMatches
 import com.jk.offermate.ui.theme.TextSecondary
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -93,6 +94,8 @@ fun AiChatRoute(
     var activeConversationId by rememberSaveable { mutableStateOf<String?>(null) }
     // 用于区分多次“新对话”，强制重建 ChatViewModel。
     var newChatToken by rememberSaveable { mutableStateOf(0) }
+    // 从搜索结果进入时要定位到的命中消息 id（一次性）。
+    var pendingScrollMessageId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     // 新建一段空白自由对话（不落库，直接切到空白页）
     val startFreeChat: () -> Unit = {
@@ -127,6 +130,8 @@ fun AiChatRoute(
                     onResume = { item ->
                         activeQuestionId = item.questionId
                         activeConversationId = item.conversationId
+                        // 命中消息则进入后定位到该条（片段搜索结果）
+                        pendingScrollMessageId = item.hitMessageId
                         scope.launch { drawerState.close() }
                     },
                     onStart = { candidate ->
@@ -151,7 +156,9 @@ fun AiChatRoute(
             onOpenDrawer = { scope.launch { drawerState.open() } },
             onNewChat = startFreeChat,
             registerInputContent = registerInputContent,
-            contentBottomPadding = contentBottomPadding
+            contentBottomPadding = contentBottomPadding,
+            scrollToMessageId = pendingScrollMessageId,
+            onScrollConsumed = { pendingScrollMessageId = null }
         )
     }
 }
@@ -166,7 +173,9 @@ private fun AiChatConversation(
     onOpenDrawer: () -> Unit,
     onNewChat: () -> Unit,
     registerInputContent: ((@Composable () -> Unit)?) -> Unit,
-    contentBottomPadding: Dp = 0.dp
+    contentBottomPadding: Dp = 0.dp,
+    scrollToMessageId: Long? = null,
+    onScrollConsumed: () -> Unit = {}
 ) {
     // conversationId 为空的新对话用 token 区分，保证每次“新对话”是全新的 VM
     val chatKey = "chat:${conversationId ?: "new"}:$questionId:$newChatToken"
@@ -189,6 +198,16 @@ private fun AiChatConversation(
 
     // 输入内容随会话（chatKey）切换而重置
     var input by rememberSaveable(chatKey) { mutableStateOf("") }
+
+    // 搜索命中消息 id → 列表下标（用 COUNT 查询，避免把消息 id 带入领域模型）
+    var scrollToIndex by remember(conversationId, scrollToMessageId) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(conversationId, scrollToMessageId) {
+        scrollToIndex = if (scrollToMessageId != null && conversationId != null) {
+            container.conversationRepository.messageIndex(conversationId, scrollToMessageId)
+        } else {
+            null
+        }
+    }
 
     // 把输入胶囊内容登记到 app 级常驻 dock；会话切换时替换、离开对话页时注销。
     // 该 lambda 在 dock 的组合作用域中执行，会订阅 input / sending 状态，输入即时更新。
@@ -223,7 +242,9 @@ private fun AiChatConversation(
         onConsumeError = viewModel::consumeError,
         onConsumeNotice = viewModel::consumeNotice,
         onOpenDrawer = onOpenDrawer,
-        contentBottomPadding = contentBottomPadding
+        contentBottomPadding = contentBottomPadding,
+        scrollToIndex = scrollToIndex,
+        onScrollConsumed = onScrollConsumed
     )
 }
 
@@ -289,7 +310,7 @@ private fun AiChatDrawer(
             if (state.history.isNotEmpty()) {
                 item { DrawerSectionLabel("对话历史") }
                 items(state.history, key = { it.conversationId }) { item ->
-                    DrawerHistoryRow(item = item, onClick = { onResume(item) })
+                    DrawerHistoryRow(item = item, query = state.query, onClick = { onResume(item) })
                 }
                 item { Spacer(Modifier.height(8.dp)) }
             }
@@ -325,7 +346,7 @@ private fun DrawerSectionLabel(text: String) {
 }
 
 @Composable
-private fun DrawerHistoryRow(item: ConversationHistoryItem, onClick: () -> Unit) {
+private fun DrawerHistoryRow(item: ConversationHistoryItem, query: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -336,12 +357,23 @@ private fun DrawerHistoryRow(item: ConversationHistoryItem, onClick: () -> Unit)
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                item.title,
+                highlightMatches(item.title, query, MaterialTheme.colorScheme.primary),
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            // 命中消息内容时展示片段（关键词高亮）
+            item.snippet?.let { snippet ->
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    highlightMatches(snippet, query, MaterialTheme.colorScheme.primary),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Spacer(Modifier.height(2.dp))
             Text(
                 PostMappers.relativeTimeLabel(item.updatedAt, System.currentTimeMillis()),

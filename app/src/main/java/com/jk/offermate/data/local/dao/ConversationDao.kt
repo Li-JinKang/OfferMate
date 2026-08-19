@@ -28,6 +28,22 @@ interface ConversationDao {
     @Query("SELECT * FROM conversation ORDER BY updatedAt DESC")
     fun observeAllConversations(): Flow<List<ConversationEntity>>
 
+    /**
+     * 按会话标题或消息内容搜索会话（按最近活跃倒序）。
+     * 命中消息时带出最近一条命中消息的正文([snippet])与其 id([hitMessageId])，用于展示片段与跳转定位；
+     * 仅标题命中时二者为 null。[kw] 需已包 `%关键词%` 并转义（配合 ESCAPE '\'）。
+     */
+    @Query(
+        "SELECT c.id AS id, c.questionId AS questionId, c.title AS title, c.updatedAt AS updatedAt, " +
+            "(SELECT m.content FROM chat_message m WHERE m.conversationId = c.id AND m.content LIKE :kw ESCAPE '\\' ORDER BY m.id DESC LIMIT 1) AS snippet, " +
+            "(SELECT m.id FROM chat_message m WHERE m.conversationId = c.id AND m.content LIKE :kw ESCAPE '\\' ORDER BY m.id DESC LIMIT 1) AS hitMessageId " +
+            "FROM conversation c " +
+            "WHERE c.title LIKE :kw ESCAPE '\\' " +
+            "OR EXISTS (SELECT 1 FROM chat_message m WHERE m.conversationId = c.id AND m.content LIKE :kw ESCAPE '\\') " +
+            "ORDER BY c.updatedAt DESC LIMIT :limit"
+    )
+    fun search(kw: String, limit: Int): Flow<List<ConversationSearchRow>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(conversation: ConversationEntity)
 
@@ -43,6 +59,10 @@ interface ConversationDao {
     @Query("SELECT * FROM chat_message WHERE conversationId = :conversationId ORDER BY id")
     suspend fun messagesOf(conversationId: String): List<ChatMessageEntity>
 
+    /** 命中消息在其会话消息列表（按 id 升序）中的 1-based 序号；下标 = 结果 - 1。用于搜索跳转定位。 */
+    @Query("SELECT COUNT(*) FROM chat_message WHERE conversationId = :conversationId AND id <= :messageId")
+    suspend fun messagePositionOf(conversationId: String, messageId: Long): Int
+
     @Insert
     suspend fun insertMessage(message: ChatMessageEntity)
 
@@ -55,4 +75,14 @@ data class ConversationSummaryRow(
     val questionId: String,
     val count: Int,
     val lastUpdated: Long
+)
+
+/** [ConversationDao.search] 的投影行：会话基本信息 + 命中消息片段与其 id（仅标题命中时后两者为 null）。 */
+data class ConversationSearchRow(
+    val id: String,
+    val questionId: String?,
+    val title: String,
+    val updatedAt: Long,
+    val snippet: String?,
+    val hitMessageId: Long?
 )

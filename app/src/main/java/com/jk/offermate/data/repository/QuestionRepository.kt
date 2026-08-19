@@ -6,7 +6,9 @@ import com.jk.offermate.agent.QuestionSource
 import com.jk.offermate.data.local.PostMappers
 import com.jk.offermate.data.local.dao.QuestionDao
 import com.jk.offermate.data.local.entity.QuestionEntity
+import com.jk.offermate.data.local.toLikePattern
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 
@@ -20,6 +22,9 @@ interface QuestionRepository {
 
     /** 观察单道题（追问页用，答案更新后自动反映）。 */
     fun observeById(questionId: String): Flow<AnsweredQuestion?>
+
+    /** 搜索题目：题干/答案/标签/考点/分类任一命中（DB LIKE，结果有上限）。 */
+    fun search(query: String, limit: Int = 100): Flow<List<AnsweredQuestion>>
 
     /** 标记某题已刷/未刷。 */
     suspend fun setPracticed(questionId: String, practiced: Boolean)
@@ -53,6 +58,12 @@ class RoomQuestionRepository(private val questionDao: QuestionDao) : QuestionRep
 
     override fun observeById(questionId: String): Flow<AnsweredQuestion?> =
         questionDao.observeById(questionId).map { it?.let(PostMappers::toAnswered) }
+
+    override fun search(query: String, limit: Int): Flow<List<AnsweredQuestion>> {
+        val kw = query.trim()
+        if (kw.isEmpty()) return flowOf(emptyList())
+        return questionDao.search(toLikePattern(kw), limit).map { list -> list.map(PostMappers::toAnswered) }
+    }
 
     override suspend fun setPracticed(questionId: String, practiced: Boolean) {
         questionDao.setPracticed(questionId, practiced)

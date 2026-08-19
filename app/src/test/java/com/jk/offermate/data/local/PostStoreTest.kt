@@ -39,6 +39,7 @@ class PostStoreTest {
         override fun observeAll(): Flow<List<QuestionEntity>> = byPost.map { it.values.flatten() }
         override fun observeById(id: String): Flow<QuestionEntity?> =
             byPost.map { m -> m.values.flatten().firstOrNull { it.id == id } }
+        override fun search(kw: String, limit: Int): Flow<List<QuestionEntity>> = byPost.map { emptyList() }
         override suspend fun updateAnswer(id: String, answer: String) {
             byPost.value = byPost.value.mapValues { (_, list) ->
                 list.map { if (it.id == id) it.copy(answer = answer) else it }

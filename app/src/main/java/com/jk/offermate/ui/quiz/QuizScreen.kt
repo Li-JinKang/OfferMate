@@ -50,6 +50,7 @@ import com.jk.offermate.agent.Difficulty
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.PuzzleGrid
 import com.jk.offermate.ui.components.SearchField
+import com.jk.offermate.ui.components.highlightMatches
 import com.jk.offermate.ui.components.WaveFillBlob
 import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextPrimary
@@ -126,7 +127,7 @@ fun QuizOverviewScreen(
                     ) {
                         state.results.forEach { q ->
                             val cat = CategoryResolver.displayCategory(q)
-                            SearchResultRow(question = q.question, category = cat) { onOpenCategory(cat) }
+                            SearchResultRow(question = q.question, category = cat, query = state.query) { onOpenCategory(cat) }
                         }
                         Spacer(Modifier.height(8.dp))
                     }
@@ -203,7 +204,7 @@ fun QuizOverviewScreen(
 }
 
 @Composable
-private fun SearchResultRow(question: String, category: String, onClick: () -> Unit) {
+private fun SearchResultRow(question: String, category: String, query: String, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -223,7 +224,7 @@ private fun SearchResultRow(question: String, category: String, onClick: () -> U
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    question,
+                    highlightMatches(question, query, MaterialTheme.colorScheme.primary),
                     style = MaterialTheme.typography.bodyLarge,
                     color = TextPrimary,
                     maxLines = 2,

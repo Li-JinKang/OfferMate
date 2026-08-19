@@ -2,15 +2,31 @@ package com.jk.offermate.data.repository
 
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.Role
+import com.jk.offermate.data.local.buildSnippet
 import com.jk.offermate.data.local.dao.ConversationDao
 import com.jk.offermate.data.local.entity.ChatMessageEntity
 import com.jk.offermate.data.local.entity.ConversationEntity
+import com.jk.offermate.data.local.toLikePattern
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 /** 某道题的会话概要：会话数量与最近活跃时间。 */
 data class ConversationInfo(val count: Int, val lastUpdated: Long)
+
+/**
+ * 会话搜索命中项：会话基本信息 + 命中消息片段与其 id。
+ * [snippet]/[hitMessageId] 为空表示仅标题命中（无消息内容命中）。
+ */
+data class ConversationSearchHit(
+    val conversationId: String,
+    val questionId: String?,
+    val title: String,
+    val updatedAt: Long,
+    val snippet: String?,
+    val hitMessageId: Long?
+)
 
 /**
  * 会话仓库：会话 CRUD、追加消息、加载上下文。全部本地持久化。
@@ -33,6 +49,12 @@ interface ConversationRepository {
 
     /** 观察全部会话（按最近活跃时间倒序），用于 AI 对话页抽屉的历史列表。 */
     fun observeAllConversations(): Flow<List<ConversationEntity>>
+
+    /** 搜索会话：标题或消息内容命中（DB LIKE，结果有上限），带出命中片段与消息 id。 */
+    fun searchConversations(query: String, limit: Int = 50): Flow<List<ConversationSearchHit>>
+
+    /** 命中消息在会话消息列表中的下标（用于打开会话后滚动定位）；找不到返回 -1。 */
+    suspend fun messageIndex(conversationId: String, messageId: Long): Int
 
     /** 观察某会话的消息（用于 UI）。 */
     fun observeMessages(conversationId: String): Flow<List<ChatMessage>>
@@ -98,11 +120,32 @@ class RoomConversationRepository(
     override fun observeAllConversations(): Flow<List<ConversationEntity>> =
         dao.observeAllConversations()
 
+    override fun searchConversations(query: String, limit: Int): Flow<List<ConversationSearchHit>> {
+        val kw = query.trim()
+        if (kw.isEmpty()) return flowOf(emptyList())
+        return dao.search(toLikePattern(kw), limit).map { rows ->
+            rows.map { r ->
+                ConversationSearchHit(
+                    conversationId = r.id,
+                    questionId = r.questionId,
+                    title = r.title,
+                    updatedAt = r.updatedAt,
+                    // 只保留关键词附近一小段，控制堆占用与展示长度
+                    snippet = r.snippet?.let { buildSnippet(it, kw) },
+                    hitMessageId = r.hitMessageId
+                )
+            }
+        }
+    }
+
     override fun observeMessages(conversationId: String): Flow<List<ChatMessage>> =
         dao.observeMessages(conversationId).map { list -> list.map(::toDomain) }
 
     override suspend fun history(conversationId: String): List<ChatMessage> =
         dao.messagesOf(conversationId).map(::toDomain)
+
+    override suspend fun messageIndex(conversationId: String, messageId: Long): Int =
+        dao.messagePositionOf(conversationId, messageId) - 1
 
     override suspend fun append(conversationId: String, role: Role, content: String) {
         dao.insertMessage(

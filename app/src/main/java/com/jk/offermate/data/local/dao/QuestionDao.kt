@@ -16,6 +16,20 @@ interface QuestionDao {
     @Query("SELECT * FROM question ORDER BY relevanceScore DESC, orderIndex")
     fun observeAll(): Flow<List<QuestionEntity>>
 
+    /**
+     * 题库搜索：题干/答案/标签/考点/分类任一子串命中；题干命中优先，其次相关度。
+     * [kw] 需由上层包裹为 `%关键词%` 并对 `% _ \` 做转义（配合 ESCAPE '\'）。
+     */
+    @Query(
+        "SELECT * FROM question " +
+            "WHERE question LIKE :kw ESCAPE '\\' OR answer LIKE :kw ESCAPE '\\' " +
+            "OR tagsCsv LIKE :kw ESCAPE '\\' OR keyPointsCsv LIKE :kw ESCAPE '\\' " +
+            "OR category LIKE :kw ESCAPE '\\' " +
+            "ORDER BY (CASE WHEN question LIKE :kw ESCAPE '\\' THEN 0 ELSE 1 END), relevanceScore DESC, orderIndex " +
+            "LIMIT :limit"
+    )
+    fun search(kw: String, limit: Int): Flow<List<QuestionEntity>>
+
     @Query("SELECT * FROM question WHERE id = :id")
     fun observeById(id: String): Flow<QuestionEntity?>
 
