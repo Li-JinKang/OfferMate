@@ -22,6 +22,12 @@ class QuestionRepositoryTest {
         override fun observeAll(): Flow<List<QuestionEntity>> = all
         override fun observeById(id: String): Flow<QuestionEntity?> = all.map { l -> l.firstOrNull { it.id == id } }
         override fun search(kw: String, limit: Int): Flow<List<QuestionEntity>> = all.map { emptyList() }
+        override suspend fun updateCategory(id: String, category: String) {
+            all.value = all.value.map { if (it.id == id) it.copy(category = category) else it }
+        }
+        override suspend fun deleteByIds(ids: List<String>) {
+            all.value = all.value.filterNot { it.id in ids }
+        }
         override suspend fun setPracticed(id: String, practiced: Boolean) {
             all.value = all.value.map { if (it.id == id) it.copy(practiced = practiced) else it }
         }

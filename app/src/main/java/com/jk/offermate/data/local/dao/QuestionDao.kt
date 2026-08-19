@@ -39,6 +39,12 @@ interface QuestionDao {
     @Query("UPDATE question SET answer = :answer WHERE id = :id")
     suspend fun updateAnswer(id: String, answer: String)
 
+    @Query("UPDATE question SET category = :category WHERE id = :id")
+    suspend fun updateCategory(id: String, category: String)
+
+    @Query("DELETE FROM question WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
+
     @Query("SELECT COUNT(*) FROM question WHERE postId = :postId")
     suspend fun countByPost(postId: String): Int
 

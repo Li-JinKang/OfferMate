@@ -32,6 +32,12 @@ interface QuestionRepository {
     /** 更新某题的答案（追问后据讨论重写答案）。 */
     suspend fun updateAnswer(questionId: String, answer: String)
 
+    /** 更新某题的分类（用户手动移动分类）。 */
+    suspend fun updateCategory(questionId: String, category: String)
+
+    /** 批量删除题目（分类级联删除时用）。 */
+    suspend fun deleteQuestions(ids: List<String>)
+
     /** 用户手动新增一道题（归入 [category] 分类）。 */
     suspend fun addManualQuestion(
         question: String,
@@ -71,6 +77,17 @@ class RoomQuestionRepository(private val questionDao: QuestionDao) : QuestionRep
 
     override suspend fun updateAnswer(questionId: String, answer: String) {
         questionDao.updateAnswer(questionId, answer)
+    }
+
+    override suspend fun updateCategory(questionId: String, category: String) {
+        if (questionId.isBlank()) return
+        questionDao.updateCategory(questionId, category.trim())
+    }
+
+    override suspend fun deleteQuestions(ids: List<String>) {
+        val valid = ids.filter { it.isNotBlank() }
+        if (valid.isEmpty()) return
+        questionDao.deleteByIds(valid)
     }
 
     override suspend fun addManualQuestion(

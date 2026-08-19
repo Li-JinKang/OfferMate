@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -91,6 +92,21 @@ class QuizViewModel(
         if (question.isBlank()) return
         viewModelScope.launch {
             questionRepository.addManualQuestion(question, answer, category, difficulty)
+        }
+    }
+
+    /**
+     * 级联删除分类：删除该显示分类下的所有题目，并移除同名用户分类标签。
+     * 因显示分类是「category 字段 or 首个标签 or 其他」的启发式，需在应用层筛出题目 id 再批量删。
+     */
+    fun deleteCategory(name: String) {
+        val target = name.trim()
+        if (target.isEmpty()) return
+        viewModelScope.launch {
+            val all = questionRepository.observeAll().first()
+            val ids = all.filter { CategoryResolver.displayCategory(it) == target }.map { it.id }
+            questionRepository.deleteQuestions(ids)
+            categoryRepository.deleteCategory(target)
         }
     }
 

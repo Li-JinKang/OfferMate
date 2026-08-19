@@ -1,7 +1,9 @@
 package com.jk.offermate.ui.quiz
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -83,10 +85,12 @@ fun QuizRoute(
         onOpenCategory = onOpenCategory,
         onAddCategory = viewModel::addCategory,
         onAddQuestion = viewModel::addManualQuestion,
+        onDeleteCategory = viewModel::deleteCategory,
         contentBottomPadding = contentBottomPadding
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun QuizOverviewScreen(
     state: QuizOverviewState,
@@ -94,10 +98,13 @@ fun QuizOverviewScreen(
     onOpenCategory: (category: String, questionId: String?) -> Unit,
     onAddCategory: (String) -> Unit,
     onAddQuestion: (String, String, String, Difficulty) -> Unit,
+    onDeleteCategory: (String) -> Unit = {},
     contentBottomPadding: Dp = 0.dp
 ) {
     var showAddCategory by remember { mutableStateOf(false) }
     var showAddQuestion by remember { mutableStateOf(false) }
+    // 长按分类唤起的删除确认目标
+    var deleteCategoryTarget by remember { mutableStateOf<CategorySummary?>(null) }
     val categories = state.categories
 
     Column(
@@ -156,7 +163,10 @@ fun QuizOverviewScreen(
                         shape = shape,
                         modifier = Modifier
                             .fillMaxSize()
-                            .clickable { onOpenCategory(c.name, null) }
+                            .combinedClickable(
+                                onClick = { onOpenCategory(c.name, null) },
+                                onLongClick = { deleteCategoryTarget = c }
+                            )
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -201,6 +211,27 @@ fun QuizOverviewScreen(
             existingCategories = categories.map { it.name },
             onConfirm = { q, a, cat, diff -> onAddQuestion(q, a, cat, diff); showAddQuestion = false },
             onDismiss = { showAddQuestion = false }
+        )
+    }
+    deleteCategoryTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteCategoryTarget = null },
+            title = { Text("删除分类") },
+            text = {
+                Text(
+                    if (target.total > 0) {
+                        "将删除「${target.name}」及其下 ${target.total} 道题目，此操作不可恢复。"
+                    } else {
+                        "将删除空分类「${target.name}」。"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { onDeleteCategory(target.name); deleteCategoryTarget = null }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleteCategoryTarget = null }) { Text("取消") } }
         )
     }
 }

@@ -30,27 +30,33 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
- * 左划露出"置顶/删除"操作的卡片容器。向左拖动露出右侧按钮，超过一半吸附展开，否则回弹。
+ * 左划露出操作的卡片容器。向左拖动露出右侧按钮，超过一半吸附展开，否则回弹。
+ *
+ * [onTogglePin] 为空时进入「仅删除」模式（只露出一个删除按钮，适用于题库题目卡片）；
+ * 非空时露出「置顶 + 删除」两个按钮（首页帖子卡片）。
  */
 @Composable
 fun SwipeableActionCard(
-    pinned: Boolean,
-    onTogglePin: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    pinned: Boolean = false,
+    onTogglePin: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val actionWidth = 76.dp
-    val maxOffsetPx = with(density) { (actionWidth * 2).toPx() }
+    val actionCount = if (onTogglePin != null) 2 else 1
+    val maxOffsetPx = with(density) { (actionWidth * actionCount).toPx() }
     val offsetX = remember { Animatable(0f) }
 
     Box(modifier.fillMaxWidth()) {
         Row(Modifier.matchParentSize(), horizontalArrangement = Arrangement.End) {
-            ActionCell(if (pinned) "取消置顶" else "置顶", Indigo, actionWidth) {
-                scope.launch { offsetX.animateTo(0f) }
-                onTogglePin()
+            if (onTogglePin != null) {
+                ActionCell(if (pinned) "取消置顶" else "置顶", Indigo, actionWidth) {
+                    scope.launch { offsetX.animateTo(0f) }
+                    onTogglePin()
+                }
             }
             ActionCell("删除", Color(0xFFE5484D), actionWidth) {
                 scope.launch { offsetX.animateTo(0f) }

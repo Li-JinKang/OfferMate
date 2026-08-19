@@ -47,6 +47,8 @@ fun AnsweredQuestionCard(
     onTogglePracticed: (() -> Unit)? = null,
     onFollowUp: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    /** 移动分类入口（题库分类页用）。 */
+    onChangeCategory: (() -> Unit)? = null,
     /** 置 true 时播放一次“放大→复原”提示动画（用于从搜索结果定位到本卡片）。 */
     pulse: Boolean = false
 ) {
@@ -115,7 +117,7 @@ fun AnsweredQuestionCard(
                 }
             }
 
-            if (onTogglePracticed != null || onFollowUp != null || onDelete != null) {
+            if (onTogglePracticed != null || onFollowUp != null || onDelete != null || onChangeCategory != null) {
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     onTogglePracticed?.let { toggle ->
@@ -125,6 +127,9 @@ fun AnsweredQuestionCard(
                     }
                     onFollowUp?.let { followUp ->
                         TextButton(onClick = followUp) { Text("追问") }
+                    }
+                    onChangeCategory?.let { change ->
+                        TextButton(onClick = change) { Text("移动分类") }
                     }
                     onDelete?.let { delete ->
                         Spacer(Modifier.weight(1f))
