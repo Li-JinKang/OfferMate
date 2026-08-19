@@ -13,10 +13,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
-/** 抽屉里的一条历史对话。 */
+/** 抽屉里的一条历史对话（[questionId] 为空即自由对话）。 */
 data class ConversationHistoryItem(
     val conversationId: String,
-    val questionId: String,
+    val questionId: String?,
     val title: String,
     val updatedAt: Long
 )
@@ -33,7 +33,9 @@ data class AiChatDrawerState(
     val history: List<ConversationHistoryItem> = emptyList(),
     val candidates: List<StartCandidate> = emptyList(),
     /** 最近一次对话（不受搜索影响），用于进入 Tab 时默认展示。 */
-    val latest: ConversationHistoryItem? = null
+    val latest: ConversationHistoryItem? = null,
+    /** 是否已完成首次数据加载：避免加载完成前误显示“无对话”空状态。 */
+    val initialized: Boolean = false
 )
 
 /**
@@ -56,12 +58,12 @@ class AiChatViewModel(
             val keyword = q.trim()
             val questionById = questions.associateBy { it.id }
 
-            val allHistory = conversations
-                .filter { !it.questionId.isNullOrBlank() }
-                .map { c ->
-                    val title = c.title.ifBlank { questionById[c.questionId]?.question ?: "对话" }
-                    ConversationHistoryItem(c.id, c.questionId!!, title, c.updatedAt)
+            val allHistory = conversations.map { c ->
+                val title = c.title.ifBlank {
+                    c.questionId?.let { questionById[it]?.question } ?: "新对话"
                 }
+                ConversationHistoryItem(c.id, c.questionId, title, c.updatedAt)
+            }
             val history = if (keyword.isEmpty()) {
                 allHistory
             } else {
@@ -83,7 +85,8 @@ class AiChatViewModel(
                 query = q,
                 history = history,
                 candidates = candidates,
-                latest = allHistory.firstOrNull()
+                latest = allHistory.firstOrNull(),
+                initialized = true
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiChatDrawerState())
 

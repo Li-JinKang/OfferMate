@@ -1,6 +1,7 @@
 package com.jk.offermate.ui.followup
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -101,7 +102,10 @@ fun FollowUpScreen(
     /** 若提供，则顶部栏显示菜单（抽屉）图标而非返回箭头（AI 对话 Tab 内嵌用）。 */
     onOpenDrawer: (() -> Unit)? = null,
     /** 若提供，则底部输入条与该 Tab 栏堆叠为可切换的悬浮 dock（AI 对话 Tab 内嵌用）。 */
-    bottomTabs: (@Composable () -> Unit)? = null
+    bottomTabs: (@Composable () -> Unit)? = null,
+    /** dock 状态：输入条是否在前（上提到外部，便于离开页面时先归位使 Tab 栏下滑对齐）。 */
+    dockInputInFront: Boolean = true,
+    onDockInputInFrontChange: (Boolean) -> Unit = {}
 ) {
     var input by remember { mutableStateOf("") }
     var deepThink by remember { mutableStateOf(false) }
@@ -205,8 +209,8 @@ fun FollowUpScreen(
             }
         }
 
-        // 更新答案入口
-        if (messages.any { it.role == Role.ASSISTANT }) {
+        // 更新答案入口（仅绑定题目的会话才有）
+        if (question != null && messages.any { it.role == Role.ASSISTANT }) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = IndigoContainer,
@@ -234,7 +238,9 @@ fun FollowUpScreen(
                     onSend(input)
                     input = ""
                 },
-                tabs = bottomTabs
+                tabs = bottomTabs,
+                inputInFront = dockInputInFront,
+                onInputInFrontChange = onDockInputInFrontChange
             )
         } else {
             ChatInputBar(
@@ -255,9 +261,9 @@ fun FollowUpScreen(
     }
 }
 
-/** dock 中两个胶囊的统一高度与探头露出高度。 */
-private val DockPillHeight = 60.dp
-private val DockPeek = 18.dp
+/** dock 中两个胶囊的统一高度与探头露出高度（高度/边距与全局底栏 TabPill 对齐）。 */
+private val DockPillHeight = 56.dp
+private val DockPeek = 16.dp
 
 /**
  * 底部堆叠 dock：输入胶囊与 Tab 胶囊等高，前者在上、后者在下露出一条边（[DockPeek]）。
@@ -269,27 +275,37 @@ private fun ChatBottomDock(
     onInputChange: (String) -> Unit,
     sending: Boolean,
     onSend: () -> Unit,
-    tabs: @Composable () -> Unit
+    tabs: @Composable () -> Unit,
+    inputInFront: Boolean,
+    onInputInFrontChange: (Boolean) -> Unit
 ) {
-    var inputInFront by rememberSaveable { mutableStateOf(true) }
-    val inputOffset by animateDpAsState(if (inputInFront) 0.dp else DockPeek, label = "inputOffset")
-    val tabsOffset by animateDpAsState(if (inputInFront) DockPeek else 0.dp, label = "tabsOffset")
+    val inputOffset by animateDpAsState(
+        targetValue = if (inputInFront) 0.dp else DockPeek,
+        animationSpec = tween(220),
+        label = "inputOffset"
+    )
+    val tabsOffset by animateDpAsState(
+        targetValue = if (inputInFront) DockPeek else 0.dp,
+        animationSpec = tween(220),
+        label = "tabsOffset"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
+            // 与全局底栏一致：左右 24dp、底部 12dp，使 dock 里的 Tab 胶囊与其它页底栏水平对齐
             .padding(horizontal = 24.dp)
-            .padding(top = 4.dp, bottom = 10.dp)
+            .padding(bottom = 12.dp)
             .height(DockPillHeight + DockPeek)
     ) {
         val inputLayer: @Composable () -> Unit = {
-            DockLayer(offsetY = inputOffset, inFront = inputInFront, onTapPeek = { inputInFront = true }) {
+            DockLayer(offsetY = inputOffset, inFront = inputInFront, onTapPeek = { onInputInFrontChange(true) }) {
                 CompactChatInput(input = input, onInputChange = onInputChange, sending = sending, onSend = onSend)
             }
         }
         val tabsLayer: @Composable () -> Unit = {
-            DockLayer(offsetY = tabsOffset, inFront = !inputInFront, onTapPeek = { inputInFront = false }) {
+            DockLayer(offsetY = tabsOffset, inFront = !inputInFront, onTapPeek = { onInputInFrontChange(false) }) {
                 tabs()
             }
         }
@@ -461,7 +477,11 @@ private fun EmptyState(question: AnsweredQuestion?) {
                 Spacer(Modifier.height(12.dp))
             }
             Text(
-                "就这道题向 AI 追问，例如：\n“能换个更简单的角度解释吗？”\n“结合我的项目怎么答？”",
+                text = if (question != null) {
+                    "就这道题向 AI 追问，例如：\n“能换个更简单的角度解释吗？”\n“结合我的项目怎么答？”"
+                } else {
+                    "问我任何面试相关的问题，例如：\n“介绍一下 JVM 内存模型”\n“如何准备系统设计面试？”"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -754,5 +774,5 @@ private fun conversationTitle(
     val active = conversations.firstOrNull { it.id == activeConversationId }
     return active?.title?.takeIf { it.isNotBlank() }
         ?: question?.question?.takeIf { it.isNotBlank() }
-        ?: "追问"
+        ?: "AI 对话"
 }

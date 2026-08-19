@@ -22,6 +22,9 @@ interface ConversationRepository {
     /** 为某道题另起一轮新会话（不复用已有会话），返回新会话 id。 */
     suspend fun createNewForQuestion(questionId: String, title: String): String
 
+    /** 新建一个自由对话会话（不绑定题目），返回新会话 id。 */
+    suspend fun createNewChat(title: String): String
+
     /** 观察某道题下的所有会话（按创建时间升序，用于会话切换器 UI）。 */
     fun observeConversationsForQuestion(questionId: String): Flow<List<ConversationEntity>>
 
@@ -61,6 +64,21 @@ class RoomConversationRepository(
             ConversationEntity(
                 id = id,
                 questionId = questionId,
+                title = title,
+                createdAt = ts,
+                updatedAt = ts
+            )
+        )
+        return id
+    }
+
+    override suspend fun createNewChat(title: String): String {
+        val id = UUID.randomUUID().toString()
+        val ts = now()
+        dao.insert(
+            ConversationEntity(
+                id = id,
+                questionId = null,
                 title = title,
                 createdAt = ts,
                 updatedAt = ts

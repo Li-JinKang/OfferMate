@@ -1,7 +1,8 @@
 package com.jk.offermate.ui.navigation
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -82,7 +83,12 @@ fun OfferMateApp(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            if (showBottomBar) {
+            // 全局底栏随页面切换同步淡入淡出，避免与内容渐变不同步造成的割裂
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showBottomBar,
+                enter = fadeIn(tween(220)),
+                exit = fadeOut(tween(220))
+            ) {
                 FloatingBottomBar(
                     currentDestination = currentDestination,
                     onNavigate = navigateTab
@@ -90,24 +96,35 @@ fun OfferMateApp(
             }
         }
     ) { innerPadding ->
+        // 底栏内边距只作用到「有全局底栏」的 Home/Quiz；不作用到 NavHost 根，
+        // 否则切换 Tab 时底栏出现/消失会连带把正在退出的页面重新布局（上移抖动）。
+        val bottomBarPadding = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
+
         NavHost(
             navController = navController,
             startDestination = Screen.Home.route,
-            modifier = Modifier.padding(innerPadding)
+            enterTransition = { fadeIn(tween(220)) },
+            exitTransition = { fadeOut(tween(220)) },
+            popEnterTransition = { fadeIn(tween(220)) },
+            popExitTransition = { fadeOut(tween(220)) }
         ) {
             composable(Screen.Home.route) {
-                HomeRoute(
-                    container = container,
-                    onOpenPost = { postId -> navController.navigate("questions/$postId") },
-                    onOpenSettings = { navController.navigate(Screen.Settings.route) },
-                    sharedText = sharedText,
-                    onSharedTextConsumed = onSharedTextConsumed
-                )
+                Box(bottomBarPadding) {
+                    HomeRoute(
+                        container = container,
+                        onOpenPost = { postId -> navController.navigate("questions/$postId") },
+                        onOpenSettings = { navController.navigate(Screen.Settings.route) },
+                        sharedText = sharedText,
+                        onSharedTextConsumed = onSharedTextConsumed
+                    )
+                }
             }
             composable(Screen.Quiz.route) {
-                QuizRoute(container, onOpenCategory = { name ->
-                    navController.navigate("quizCategory/${android.net.Uri.encode(name)}")
-                })
+                Box(bottomBarPadding) {
+                    QuizRoute(container, onOpenCategory = { name ->
+                        navController.navigate("quizCategory/${android.net.Uri.encode(name)}")
+                    })
+                }
             }
             composable(
                 route = "quizCategory/{category}",

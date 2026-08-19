@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -52,7 +53,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.data.local.PostMappers
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.followup.FollowUpScreen
-import com.jk.offermate.ui.followup.FollowUpViewModel
 import com.jk.offermate.ui.quiz.categoryColor
 import com.jk.offermate.ui.theme.TextPrimary
 import com.jk.offermate.ui.theme.TextSecondary
@@ -69,14 +69,21 @@ fun AiChatRoute(
     pendingQuestionId: String? = null,
     onPendingConsumed: () -> Unit = {}
 ) {
+    // dock 状态提升到此：离开页面（点其它 Tab）时先归位为 true，让 Tab 胶囊向下滑到对齐位再退出
+    var inputInFront by remember { mutableStateOf(true) }
+
     // dock 里用的 Tab 胶囊：不透明、与输入胶囊等高
     val tabs: @Composable () -> Unit = {
         com.jk.offermate.ui.navigation.TabPill(
             currentDestination = currentDestination,
-            onNavigate = onNavigateTab,
+            onNavigate = { screen ->
+                // 归位：Tab 胶囊从前置(高)滑回对齐位，与退出淡出同步
+                inputInFront = true
+                onNavigateTab(screen)
+            },
             containerColor = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp,
-            barHeight = 60.dp
+            barHeight = 56.dp
         )
     }
     val viewModel: AiChatViewModel = viewModel(
@@ -90,30 +97,29 @@ fun AiChatRoute(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    // 当前展示的会话（跨题目）；进入 Tab 时默认取最近一次对话
+    // 当前会话选择。默认 null/null = 全新空白对话（固定页面，不依赖抽屉数据、不转圈）。
+    // 会话记录在首条消息发送时才懒创建，避免留下空会话。
     var activeQuestionId by rememberSaveable { mutableStateOf<String?>(null) }
     var activeConversationId by rememberSaveable { mutableStateOf<String?>(null) }
-    var seeded by rememberSaveable { mutableStateOf(false) }
+    // 用于区分多次“新对话”，强制重建 ChatViewModel。
+    var newChatToken by rememberSaveable { mutableStateOf(0) }
 
-    // “追问”跳转：就该题打开/新建会话并置为当前
+    // 新建一段空白自由对话（不落库，直接切到空白页）
+    val startFreeChat: () -> Unit = {
+        activeQuestionId = null
+        activeConversationId = null
+        newChatToken++
+        inputInFront = true
+    }
+
+    // “追问”跳转：就该题打开/复用会话并置为当前
     LaunchedEffect(pendingQuestionId) {
         val qId = pendingQuestionId ?: return@LaunchedEffect
         val q = container.questionRepository.observeById(qId).first()
         val convId = container.conversationRepository.getOrCreateForQuestion(qId, q?.question.orEmpty())
         activeQuestionId = qId
         activeConversationId = convId
-        seeded = true
         onPendingConsumed()
-    }
-
-    LaunchedEffect(state.latest) {
-        if (!seeded && activeConversationId == null) {
-            state.latest?.let {
-                activeQuestionId = it.questionId
-                activeConversationId = it.conversationId
-                seeded = true
-            }
-        }
     }
 
     ModalNavigationDrawer(
@@ -123,10 +129,13 @@ fun AiChatRoute(
                 AiChatDrawer(
                     state = state,
                     onQueryChange = viewModel::onQueryChange,
+                    onNewChat = {
+                        startFreeChat()
+                        scope.launch { drawerState.close() }
+                    },
                     onResume = { item ->
                         activeQuestionId = item.questionId
                         activeConversationId = item.conversationId
-                        seeded = true
                         scope.launch { drawerState.close() }
                     },
                     onStart = { candidate ->
@@ -135,7 +144,6 @@ fun AiChatRoute(
                                 .getOrCreateForQuestion(candidate.id, candidate.question)
                             activeQuestionId = candidate.id
                             activeConversationId = convId
-                            seeded = true
                             drawerState.close()
                         }
                     }
@@ -143,48 +151,47 @@ fun AiChatRoute(
             }
         }
     ) {
-        val qId = activeQuestionId
-        val cId = activeConversationId
-        if (qId == null || cId == null) {
-            EmptyChatState(
-                onOpenDrawer = { scope.launch { drawerState.open() } },
-                tabs = tabs
-            )
-        } else {
-            AiChatConversation(
-                container = container,
-                questionId = qId,
-                conversationId = cId,
-                onOpenDrawer = { scope.launch { drawerState.open() } },
-                tabs = tabs
-            )
-        }
+        // 固定页面：始终渲染对话页（空白或指定会话），不依赖抽屉数据、不转圈
+        AiChatConversation(
+            container = container,
+            conversationId = activeConversationId,
+            questionId = activeQuestionId,
+            newChatToken = newChatToken,
+            onOpenDrawer = { scope.launch { drawerState.open() } },
+            onNewChat = startFreeChat,
+            tabs = tabs,
+            inputInFront = inputInFront,
+            onInputInFrontChange = { inputInFront = it }
+        )
     }
 }
 
-/** 内嵌的对话本体：复用 FollowUpViewModel/FollowUpScreen，仅把返回箭头换成抽屉菜单。 */
+/** 内嵌的对话本体：以会话为中心（题目可选），复用 FollowUpScreen，返回箭头换成抽屉菜单。 */
 @Composable
 private fun AiChatConversation(
     container: AppContainer,
-    questionId: String,
-    conversationId: String,
+    conversationId: String?,
+    questionId: String?,
+    newChatToken: Int,
     onOpenDrawer: () -> Unit,
-    tabs: @Composable () -> Unit
+    onNewChat: () -> Unit,
+    tabs: @Composable () -> Unit,
+    inputInFront: Boolean,
+    onInputInFrontChange: (Boolean) -> Unit
 ) {
-    val viewModel: FollowUpViewModel = viewModel(
-        key = "aichat:$questionId:$conversationId",
-        factory = FollowUpViewModel.provideFactory(
+    val viewModel: ChatViewModel = viewModel(
+        // conversationId 为空的新对话用 token 区分，保证每次“新对话”是全新的 VM
+        key = "chat:${conversationId ?: "new"}:$questionId:$newChatToken",
+        factory = ChatViewModel.provideFactory(
+            initialConversationId = conversationId,
             questionId = questionId,
             questionRepository = container.questionRepository,
             conversationRepository = container.conversationRepository,
             followUpService = container.followUpService,
-            resumeRepository = container.resumeRepository,
-            initialConversationId = conversationId
+            resumeRepository = container.resumeRepository
         )
     )
     val question by viewModel.question.collectAsStateWithLifecycle()
-    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
-    val activeConversationId by viewModel.activeConversationId.collectAsStateWithLifecycle()
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
@@ -192,8 +199,9 @@ private fun AiChatConversation(
 
     FollowUpScreen(
         question = question,
-        conversations = conversations,
-        activeConversationId = activeConversationId,
+        // 会话历史/切换交给抽屉，这里不用页内会话切换器
+        conversations = emptyList(),
+        activeConversationId = null,
         messages = messages,
         sending = sending,
         error = error,
@@ -201,80 +209,22 @@ private fun AiChatConversation(
         onBack = {},
         onSend = viewModel::send,
         onUpdateAnswer = viewModel::updateAnswerFromDiscussion,
-        onNewSession = viewModel::startNewSession,
-        onSwitchSession = viewModel::switchToConversation,
+        onNewSession = onNewChat,
+        onSwitchSession = {},
         onConsumeError = viewModel::consumeError,
         onConsumeNotice = viewModel::consumeNotice,
         onOpenDrawer = onOpenDrawer,
-        bottomTabs = tabs
+        bottomTabs = tabs,
+        dockInputInFront = inputInFront,
+        onDockInputInFrontChange = onInputInFrontChange
     )
-}
-
-@Composable
-private fun EmptyChatState(onOpenDrawer: () -> Unit, tabs: @Composable () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onOpenDrawer) {
-                Icon(Icons.Filled.Menu, contentDescription = "对话历史", tint = TextPrimary)
-            }
-            Text("AI 对话", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-        }
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(32.dp)
-            ) {
-                Text(
-                    "还没有对话",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "从左侧选择一道题，就它向 AI 追问",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-                Spacer(Modifier.height(20.dp))
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable(onClick = onOpenDrawer)
-                ) {
-                    Text(
-                        "选择题目",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
-                    )
-                }
-            }
-        }
-        // 空态底部也展示 Tab 栏（与 dock 中同款胶囊）
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 10.dp)
-        ) {
-            tabs()
-        }
-    }
 }
 
 @Composable
 private fun AiChatDrawer(
     state: AiChatDrawerState,
     onQueryChange: (String) -> Unit,
+    onNewChat: () -> Unit,
     onResume: (ConversationHistoryItem) -> Unit,
     onStart: (StartCandidate) -> Unit
 ) {
@@ -297,6 +247,33 @@ private fun AiChatDrawer(
         )
         Spacer(Modifier.height(8.dp))
 
+        // 新建自由对话
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onNewChat)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "新对话",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(vertical = 8.dp),
@@ -310,7 +287,7 @@ private fun AiChatDrawer(
                 item { Spacer(Modifier.height(8.dp)) }
             }
 
-            item { DrawerSectionLabel("开始新对话") }
+            item { DrawerSectionLabel("追问题目") }
             if (state.candidates.isEmpty()) {
                 item {
                     Text(

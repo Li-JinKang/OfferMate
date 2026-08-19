@@ -32,17 +32,26 @@ class FollowUpService(
     private val toolsEnabled: Boolean
         get() = toolCallingLlm != null && !toolRegistry.isEmpty()
 
-    /** 追问会话的 system 上下文（题目 + 当前答案 + 最小画像；简历细节按需用工具拉取）。 */
-    fun systemContext(context: QuestionContext, profile: ResumeProfile): String = buildString {
-        append("你是一名资深面试辅导老师，正在就下面这道面试题与候选人进行**追问讨论**。\n")
-        append("请结合候选人的简历画像与已有参考答案，针对其追问给出准确、有条理的解答。\n")
-        append("使用 Markdown、分点作答，关键术语用 **加粗**，代码/类名用 `反引号`。\n\n")
-        append("【题目】\n").append(context.question).append("\n")
-        if (context.tags.isNotEmpty()) {
-            append("【考点】").append(context.tags.joinToString("、")).append("\n")
-        }
-        if (context.currentAnswer.isNotBlank()) {
-            append("\n【当前参考答案】\n").append(context.currentAnswer).append("\n")
+    /**
+     * 对话 system 上下文。[context] 为空时是**自由对话**（不绑定题目）；非空时附带该题与当前答案。
+     * 两种情况都会带上候选人画像；简历细节按需用工具拉取。
+     */
+    fun systemContext(context: QuestionContext?, profile: ResumeProfile): String = buildString {
+        if (context == null) {
+            append("你是一名资深面试辅导老师，正在与候选人进行面试相关的自由问答与讨论。\n")
+            append("请结合候选人的简历画像，针对其问题给出准确、有条理的解答。\n")
+            append("使用 Markdown、分点作答，关键术语用 **加粗**，代码/类名用 `反引号`。\n")
+        } else {
+            append("你是一名资深面试辅导老师，正在就下面这道面试题与候选人进行**追问讨论**。\n")
+            append("请结合候选人的简历画像与已有参考答案，针对其追问给出准确、有条理的解答。\n")
+            append("使用 Markdown、分点作答，关键术语用 **加粗**，代码/类名用 `反引号`。\n\n")
+            append("【题目】\n").append(context.question).append("\n")
+            if (context.tags.isNotEmpty()) {
+                append("【考点】").append(context.tags.joinToString("、")).append("\n")
+            }
+            if (context.currentAnswer.isNotBlank()) {
+                append("\n【当前参考答案】\n").append(context.currentAnswer).append("\n")
+            }
         }
         append("\n【候选人画像】\n")
         append("目标岗位：").append(profile.targetRole.ifBlank { "未填写" }).append("\n")
@@ -53,9 +62,9 @@ class FollowUpService(
         }
     }
 
-    /** 组装本轮要发送给模型的完整消息（history 应已包含最新的用户追问）。 */
+    /** 组装本轮要发送给模型的完整消息（history 应已包含最新的用户输入）。 */
     fun buildMessages(
-        context: QuestionContext,
+        context: QuestionContext?,
         profile: ResumeProfile,
         history: List<ChatMessage>
     ): List<ChatMessage> = assembler.assemble(
@@ -63,9 +72,9 @@ class FollowUpService(
         history = history
     )
 
-    /** 针对用户的追问生成一轮回答（history 含最新用户消息）。 */
+    /** 针对用户的输入生成一轮回答（history 含最新用户消息）。[context] 为空即自由对话。 */
     suspend fun reply(
-        context: QuestionContext,
+        context: QuestionContext?,
         profile: ResumeProfile,
         history: List<ChatMessage>
     ): String = runTurn(buildMessages(context, profile, history)).trim()
