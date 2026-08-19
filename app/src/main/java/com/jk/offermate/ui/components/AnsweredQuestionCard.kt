@@ -4,15 +4,18 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,7 +31,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.ui.theme.BadgeHotBg
 import com.jk.offermate.ui.theme.BadgeHotText
@@ -50,7 +55,11 @@ fun AnsweredQuestionCard(
     /** 移动分类入口（题库分类页用）。 */
     onChangeCategory: (() -> Unit)? = null,
     /** 置 true 时播放一次“放大→复原”提示动画（用于从搜索结果定位到本卡片）。 */
-    pulse: Boolean = false
+    pulse: Boolean = false,
+    /** 动作模式：非空时卡片中央显示该透明图标，点击卡片执行 [onActionClick] 而非展开答案。 */
+    actionIcon: ImageVector? = null,
+    actionTint: Color = Color.Unspecified,
+    onActionClick: (() -> Unit)? = null
 ) {
     var revealed by rememberSaveable(q.question) { mutableStateOf(false) }
 
@@ -70,11 +79,15 @@ fun AnsweredQuestionCard(
                 scaleX = scale.value
                 scaleY = scale.value
             }
-            .clickable { revealed = !revealed },
+            .clickable {
+                // 动作模式下点击执行动作；否则展开/收起答案
+                if (onActionClick != null) onActionClick() else revealed = !revealed
+            },
         shape = RoundedCornerShape(16.dp),
         border = borderColor?.let { BorderStroke(1.5.dp, it) },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
+      Box(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             if (q.tags.isNotEmpty() || q.practiced) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -102,7 +115,10 @@ fun AnsweredQuestionCard(
                 Spacer(Modifier.height(8.dp))
             }
 
-            Text(q.question, style = MaterialTheme.typography.titleMedium)
+            Text(
+                q.question,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 26.sp)
+            )
 
             if (revealed) {
                 Spacer(Modifier.height(12.dp))
@@ -138,5 +154,18 @@ fun AnsweredQuestionCard(
                 }
             }
         }
+
+        // 动作模式：卡片中央叠加半透明大图标作为提示
+        if (actionIcon != null) {
+            Icon(
+                imageVector = actionIcon,
+                contentDescription = null,
+                tint = actionTint.copy(alpha = 0.38f),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(72.dp)
+            )
+        }
+      }
     }
 }
