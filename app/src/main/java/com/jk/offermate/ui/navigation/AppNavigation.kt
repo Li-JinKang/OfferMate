@@ -66,8 +66,17 @@ fun OfferMateApp(
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    // 仅在 Tab 目的地展示底部导航栏；帖子详情/AI 对话/设置等页面不展示。
-    val showBottomBar = currentDestination?.route in Screen.tabRoutes
+    // 全局浮动底栏只在 Home/Quiz 展示；AI 对话页在其底部 dock 里自绘 Tab（与输入条堆叠）。
+    val showBottomBar = currentDestination?.route in setOf(Screen.Home.route, Screen.Quiz.route)
+
+    // Tab 切换动作（AI 对话 dock 内的 TabPill 也复用）
+    val navigateTab: (Screen) -> Unit = { screen ->
+        navController.navigate(screen.route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -76,13 +85,7 @@ fun OfferMateApp(
             if (showBottomBar) {
                 FloatingBottomBar(
                     currentDestination = currentDestination,
-                    onNavigate = { screen ->
-                        navController.navigate(screen.route) {
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
+                    onNavigate = navigateTab
                 )
             }
         }
@@ -119,6 +122,8 @@ fun OfferMateApp(
             composable(Screen.AiChat.route) {
                 AiChatRoute(
                     container = container,
+                    currentDestination = currentDestination,
+                    onNavigateTab = navigateTab,
                     pendingQuestionId = pendingChatQuestionId,
                     onPendingConsumed = { pendingChatQuestionId = null }
                 )
@@ -150,7 +155,7 @@ fun OfferMateApp(
 }
 
 /**
- * 浮动式底部导航栏：圆角、半透明、悬浮于内容之上，整体高度更低。
+ * 浮动式底部导航栏：圆角、半透明、悬浮于内容之上（用于 Home/Quiz Tab）。
  */
 @Composable
 private fun FloatingBottomBar(
@@ -165,90 +170,7 @@ private fun FloatingBottomBar(
             .padding(horizontal = 24.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-            tonalElevation = 0.dp,
-            shadowElevation = 12.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Screen.bottomItems.forEach { screen ->
-                    val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
-                    FloatingBarItem(
-                        screen = screen,
-                        selected = selected,
-                        onClick = { onNavigate(screen) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun FloatingBarItem(
-    screen: Screen,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val contentColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.onPrimaryContainer
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-        label = "navItemColor"
-    )
-    val pillColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            Color.Transparent
-        },
-        label = "navItemPill"
-    )
-    val horizontalPadding by animateDpAsState(
-        targetValue = if (selected) 16.dp else 12.dp,
-        label = "navItemPadding"
-    )
-    val interactionSource = remember { MutableInteractionSource() }
-
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(pillColor)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            )
-            .height(40.dp)
-            .padding(horizontal = horizontalPadding),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = screen.icon,
-            contentDescription = screen.label,
-            tint = contentColor
-        )
-        if (selected) {
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = screen.label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = contentColor
-            )
-        }
+        TabPill(currentDestination = currentDestination, onNavigate = onNavigate)
     }
 }
 

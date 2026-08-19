@@ -23,9 +23,7 @@ sealed class Screen(
     data object Settings : Screen("profile", "设置", Icons.Filled.Email)
 
     companion object {
-        val bottomItems = listOf(Home, Quiz, AiChat)
-
-        /** 展示底部 Tab 栏的目的地 route 集合。 */
-        val tabRoutes = bottomItems.map { it.route }.toSet()
+        // 用 lazy 延迟到首次访问再构造，避免 sealed class 与 data object 的类初始化顺序问题
+        val bottomItems: List<Screen> by lazy { listOf(Home, Quiz, AiChat) }
     }
 }

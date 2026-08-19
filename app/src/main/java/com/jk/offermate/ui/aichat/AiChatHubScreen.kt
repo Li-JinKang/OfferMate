@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -62,10 +63,22 @@ import kotlinx.coroutines.launch
 @Composable
 fun AiChatRoute(
     container: AppContainer,
+    currentDestination: androidx.navigation.NavDestination? = null,
+    onNavigateTab: (com.jk.offermate.ui.navigation.Screen) -> Unit = {},
     /** 由“追问”携带进来的题目 id：进入后自动就该题打开/新建对话。 */
     pendingQuestionId: String? = null,
     onPendingConsumed: () -> Unit = {}
 ) {
+    // dock 里用的 Tab 胶囊：不透明、与输入胶囊等高
+    val tabs: @Composable () -> Unit = {
+        com.jk.offermate.ui.navigation.TabPill(
+            currentDestination = currentDestination,
+            onNavigate = onNavigateTab,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shadowElevation = 8.dp,
+            barHeight = 60.dp
+        )
+    }
     val viewModel: AiChatViewModel = viewModel(
         factory = AiChatViewModel.provideFactory(
             container.questionRepository,
@@ -133,13 +146,17 @@ fun AiChatRoute(
         val qId = activeQuestionId
         val cId = activeConversationId
         if (qId == null || cId == null) {
-            EmptyChatState(onOpenDrawer = { scope.launch { drawerState.open() } })
+            EmptyChatState(
+                onOpenDrawer = { scope.launch { drawerState.open() } },
+                tabs = tabs
+            )
         } else {
             AiChatConversation(
                 container = container,
                 questionId = qId,
                 conversationId = cId,
-                onOpenDrawer = { scope.launch { drawerState.open() } }
+                onOpenDrawer = { scope.launch { drawerState.open() } },
+                tabs = tabs
             )
         }
     }
@@ -151,7 +168,8 @@ private fun AiChatConversation(
     container: AppContainer,
     questionId: String,
     conversationId: String,
-    onOpenDrawer: () -> Unit
+    onOpenDrawer: () -> Unit,
+    tabs: @Composable () -> Unit
 ) {
     val viewModel: FollowUpViewModel = viewModel(
         key = "aichat:$questionId:$conversationId",
@@ -187,12 +205,13 @@ private fun AiChatConversation(
         onSwitchSession = viewModel::switchToConversation,
         onConsumeError = viewModel::consumeError,
         onConsumeNotice = viewModel::consumeNotice,
-        onOpenDrawer = onOpenDrawer
+        onOpenDrawer = onOpenDrawer,
+        bottomTabs = tabs
     )
 }
 
 @Composable
-private fun EmptyChatState(onOpenDrawer: () -> Unit) {
+private fun EmptyChatState(onOpenDrawer: () -> Unit, tabs: @Composable () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -208,7 +227,7 @@ private fun EmptyChatState(onOpenDrawer: () -> Unit) {
             }
             Text("AI 对话", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
         }
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(32.dp)
@@ -238,6 +257,16 @@ private fun EmptyChatState(onOpenDrawer: () -> Unit) {
                     )
                 }
             }
+        }
+        // 空态底部也展示 Tab 栏（与 dock 中同款胶囊）
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 10.dp)
+        ) {
+            tabs()
         }
     }
 }

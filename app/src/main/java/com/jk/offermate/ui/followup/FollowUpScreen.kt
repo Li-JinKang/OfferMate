@@ -1,10 +1,14 @@
 package com.jk.offermate.ui.followup
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -49,13 +53,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.agent.ChatMessage
@@ -92,7 +99,9 @@ fun FollowUpScreen(
     onConsumeError: () -> Unit,
     onConsumeNotice: () -> Unit,
     /** 若提供，则顶部栏显示菜单（抽屉）图标而非返回箭头（AI 对话 Tab 内嵌用）。 */
-    onOpenDrawer: (() -> Unit)? = null
+    onOpenDrawer: (() -> Unit)? = null,
+    /** 若提供，则底部输入条与该 Tab 栏堆叠为可切换的悬浮 dock（AI 对话 Tab 内嵌用）。 */
+    bottomTabs: (@Composable () -> Unit)? = null
 ) {
     var input by remember { mutableStateOf("") }
     var deepThink by remember { mutableStateOf(false) }
@@ -215,20 +224,160 @@ fun FollowUpScreen(
             Spacer(Modifier.height(4.dp))
         }
 
-        ChatInputBar(
-            input = input,
-            onInputChange = { input = it },
-            sending = sending,
-            deepThink = deepThink,
-            webSearch = webSearch,
-            onToggleDeepThink = { deepThink = !deepThink },
-            onToggleWebSearch = { webSearch = !webSearch },
-            onAdd = onNewSession,
-            onSend = {
-                onSend(input)
-                input = ""
+        if (bottomTabs != null) {
+            // AI 对话 Tab：输入条与 Tab 栏堆叠为可切换 dock
+            ChatBottomDock(
+                input = input,
+                onInputChange = { input = it },
+                sending = sending,
+                onSend = {
+                    onSend(input)
+                    input = ""
+                },
+                tabs = bottomTabs
+            )
+        } else {
+            ChatInputBar(
+                input = input,
+                onInputChange = { input = it },
+                sending = sending,
+                deepThink = deepThink,
+                webSearch = webSearch,
+                onToggleDeepThink = { deepThink = !deepThink },
+                onToggleWebSearch = { webSearch = !webSearch },
+                onAdd = onNewSession,
+                onSend = {
+                    onSend(input)
+                    input = ""
+                }
+            )
+        }
+    }
+}
+
+/** dock 中两个胶囊的统一高度与探头露出高度。 */
+private val DockPillHeight = 60.dp
+private val DockPeek = 18.dp
+
+/**
+ * 底部堆叠 dock：输入胶囊与 Tab 胶囊等高，前者在上、后者在下露出一条边（[DockPeek]）。
+ * 点击露出的探头，两者带滑动动画互换前后位置。前面的完全可交互，后面的整块只作为“切换”热区。
+ */
+@Composable
+private fun ChatBottomDock(
+    input: String,
+    onInputChange: (String) -> Unit,
+    sending: Boolean,
+    onSend: () -> Unit,
+    tabs: @Composable () -> Unit
+) {
+    var inputInFront by rememberSaveable { mutableStateOf(true) }
+    val inputOffset by animateDpAsState(if (inputInFront) 0.dp else DockPeek, label = "inputOffset")
+    val tabsOffset by animateDpAsState(if (inputInFront) DockPeek else 0.dp, label = "tabsOffset")
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(top = 4.dp, bottom = 10.dp)
+            .height(DockPillHeight + DockPeek)
+    ) {
+        val inputLayer: @Composable () -> Unit = {
+            DockLayer(offsetY = inputOffset, inFront = inputInFront, onTapPeek = { inputInFront = true }) {
+                CompactChatInput(input = input, onInputChange = onInputChange, sending = sending, onSend = onSend)
             }
-        )
+        }
+        val tabsLayer: @Composable () -> Unit = {
+            DockLayer(offsetY = tabsOffset, inFront = !inputInFront, onTapPeek = { inputInFront = false }) {
+                tabs()
+            }
+        }
+        // 后画的在上层：把当前在前的那个后画
+        if (inputInFront) {
+            tabsLayer(); inputLayer()
+        } else {
+            inputLayer(); tabsLayer()
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.DockLayer(
+    offsetY: Dp,
+    inFront: Boolean,
+    onTapPeek: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .offset(y = offsetY)
+            .height(DockPillHeight)
+    ) {
+        content()
+        if (!inFront) {
+            // 在后：整块作为切换热区（实际只有露出的探头可点），并拦截内部交互
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(28.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onTapPeek
+                    )
+            )
+        }
+    }
+}
+
+/** 单行紧凑输入胶囊：文本框 + 发送，整体高度与 Tab 胶囊一致。 */
+@Composable
+private fun CompactChatInput(
+    input: String,
+    onInputChange: (String) -> Unit,
+    sending: Boolean,
+    onSend: () -> Unit
+) {
+    val canSend = !sending && input.isNotBlank()
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 8.dp,
+        modifier = Modifier.fillMaxWidth().height(DockPillHeight)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(start = 18.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.weight(1f)) {
+                if (input.isEmpty()) {
+                    Text("发消息…", color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
+                }
+                androidx.compose.foundation.text.BasicTextField(
+                    value = input,
+                    onValueChange = onInputChange,
+                    enabled = !sending,
+                    singleLine = true,
+                    textStyle = androidx.compose.material3.LocalTextStyle.current.copy(
+                        color = TextPrimary,
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Indigo),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            CircleActionButton(
+                icon = Icons.AutoMirrored.Filled.Send,
+                contentDescription = "发送",
+                enabled = canSend,
+                filled = true,
+                onClick = { if (canSend) onSend() }
+            )
+        }
     }
 }
 
