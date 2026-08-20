@@ -55,7 +55,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.di.AppContainer
+import com.jk.offermate.ui.components.ActionBarItemSpec
+import com.jk.offermate.ui.components.ActionDeleteColor
+import com.jk.offermate.ui.components.ActionPracticeColor
 import com.jk.offermate.ui.components.AnsweredQuestionCard
+import com.jk.offermate.ui.components.FloatingActionBar
 import com.jk.offermate.ui.theme.Indigo
 import com.jk.offermate.ui.theme.TextSecondary
 
@@ -162,10 +166,10 @@ fun QuizCategoryScreen(
                     val onAction: (() -> Unit)?
                     when (mode) {
                         CategoryActionMode.Delete -> {
-                            actionIcon = Icons.Filled.Close; actionTint = DeleteRed; onAction = { onDelete(q) }
+                            actionIcon = Icons.Filled.Close; actionTint = ActionDeleteColor; onAction = { onDelete(q) }
                         }
                         CategoryActionMode.Practice -> {
-                            actionIcon = Icons.Filled.Check; actionTint = PracticeGreen; onAction = { onTogglePracticed(q) }
+                            actionIcon = Icons.Filled.Check; actionTint = ActionPracticeColor; onAction = { onTogglePracticed(q) }
                         }
                         CategoryActionMode.Move -> {
                             actionIcon = Icons.AutoMirrored.Filled.ArrowForward; actionTint = Indigo; onAction = { moveTarget = q }
@@ -186,10 +190,14 @@ fun QuizCategoryScreen(
             }
         }
 
-        CategoryActionBar(
-            mode = mode,
-            onBack = onBack,
-            onSelectMode = { m -> mode = if (mode == m) CategoryActionMode.None else m },
+        val selectMode = { m: CategoryActionMode -> mode = if (mode == m) CategoryActionMode.None else m }
+        FloatingActionBar(
+            items = listOf(
+                ActionBarItemSpec(Icons.AutoMirrored.Filled.ArrowBack, "返回", false, MaterialTheme.colorScheme.primary, onBack),
+                ActionBarItemSpec(Icons.Filled.Delete, "删除", mode == CategoryActionMode.Delete, ActionDeleteColor) { selectMode(CategoryActionMode.Delete) },
+                ActionBarItemSpec(Icons.Filled.Check, "已刷", mode == CategoryActionMode.Practice, ActionPracticeColor) { selectMode(CategoryActionMode.Practice) },
+                ActionBarItemSpec(Icons.AutoMirrored.Filled.ArrowForward, "移动", mode == CategoryActionMode.Move, Indigo) { selectMode(CategoryActionMode.Move) }
+            ),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -210,66 +218,7 @@ fun QuizCategoryScreen(
     }
 }
 
-/** 底部浮动操作胶囊：返回 + 三个可切换的批量操作模式（删除/已刷/移动），仿首页 Tab 胶囊样式。 */
-@Composable
-private fun CategoryActionBar(
-    mode: CategoryActionMode,
-    onBack: () -> Unit,
-    onSelectMode: (CategoryActionMode) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        shadowElevation = 12.dp,
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            ActionBarItem(Icons.AutoMirrored.Filled.ArrowBack, "返回", false, MaterialTheme.colorScheme.primary, onBack)
-            ActionBarItem(Icons.Filled.Delete, "删除", mode == CategoryActionMode.Delete, DeleteRed) { onSelectMode(CategoryActionMode.Delete) }
-            ActionBarItem(Icons.Filled.Check, "已刷", mode == CategoryActionMode.Practice, PracticeGreen) { onSelectMode(CategoryActionMode.Practice) }
-            ActionBarItem(Icons.AutoMirrored.Filled.ArrowForward, "移动", mode == CategoryActionMode.Move, Indigo) { onSelectMode(CategoryActionMode.Move) }
-        }
-    }
-}
 
-@Composable
-private fun ActionBarItem(
-    icon: ImageVector,
-    label: String,
-    selected: Boolean,
-    activeColor: Color,
-    onClick: () -> Unit
-) {
-    val bg = if (selected) activeColor.copy(alpha = 0.15f) else Color.Transparent
-    val content = if (selected) activeColor else MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .height(40.dp)
-            .padding(horizontal = if (selected) 14.dp else 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        Icon(icon, contentDescription = label, tint = content)
-        if (selected) {
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = content)
-        }
-    }
-}
-
-private val DeleteRed = Color(0xFFE5484D)
-private val PracticeGreen = Color(0xFF17B26A)
 
 /** 移动分类对话框：可从已有分类中选，或输入新分类名。 */
 @OptIn(ExperimentalLayoutApi::class)
