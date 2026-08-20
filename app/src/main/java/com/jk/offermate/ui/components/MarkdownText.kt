@@ -58,7 +58,9 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
         modifier = modifier,
         colors = markdownColor(
             text = TextPrimary,
-            linkText = Indigo
+            linkText = Indigo,
+            // 行内代码不加底色（库默认会填灰底），改为仅靠等宽小字号区分
+            inlineCodeBackground = Color.Transparent
         ),
         typography = chatMarkdownTypography(),
         // 关闭默认的 animateContentSize，内容更新（如流式）时不做尺寸动画，避免抖动。
@@ -90,6 +92,7 @@ private fun chatMarkdownTypography() = markdownTypography(
     list = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp),
     quote = TextStyle(color = TextSecondary, fontSize = 15.sp, lineHeight = 23.sp),
     code = TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 20.sp),
+    // 行内代码：无底色，靠等宽 + 更小字号（较正文 15sp 小）与正文区分
     inlineCode = TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
 )
 

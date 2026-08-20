@@ -155,7 +155,7 @@ fun QuizOverviewScreen(
                     columns = 3,
                     cellHeight = 112.dp,
                     modifier = Modifier.padding(horizontal = 8.dp)
-                ) { index, shape ->
+                ) { index, shape, contentPadding ->
                     val c = categories[index]
                     WaveFillBlob(
                         progress = c.ratio,
@@ -168,12 +168,13 @@ fun QuizOverviewScreen(
                                 onLongClick = { deleteCategoryTarget = c }
                             )
                     ) {
+                        // 仅显示分类名（进度进入分类后可见，无需在拼图上重复）；
+                        // 内边距来自 PuzzleGrid，已按每块凹/凸边避让 tab，防止文字被凹口裁掉。
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            // 内边距避开拼图四周的凸/凹 tab，防止文字被切掉
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 14.dp)
+                                .padding(contentPadding)
                         ) {
                             Text(
                                 c.name,
@@ -183,12 +184,6 @@ fun QuizOverviewScreen(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                "${c.practiced}/${c.total}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextPrimary
                             )
                         }
                     }

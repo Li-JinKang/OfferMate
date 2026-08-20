@@ -1,6 +1,7 @@
 package com.jk.offermate.ui.components
 
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -23,7 +24,9 @@ fun PuzzleGrid(
     columns: Int = 2,
     cellHeight: Dp = 132.dp,
     modifier: Modifier = Modifier,
-    piece: @Composable (index: Int, shape: Shape) -> Unit
+    // contentPadding：为该块内容预留的安全内边距——已避开四周 tab（body 偏移 + 凹口深度），
+    // 凹边侧额外多留一个 tab 深度，防止文字探进凹口被形状裁掉。调用方直接 padding(it) 即可。
+    piece: @Composable (index: Int, shape: Shape, contentPadding: PaddingValues) -> Unit
 ) {
     if (count == 0) return
     BoxWithConstraints(modifier) {
@@ -43,6 +46,12 @@ fun PuzzleGrid(
             }
         }
 
+        // 内容安全内边距：child 比 body 四周各多出一个 tab（凸起余量），故基础内缩一个 tab
+        // 落到 body 内；凹边（值<0）会向内咬掉一个 tab 深的半圆，该侧再多留一个 tab；另加少量文字呼吸留白。
+        val tabDp = with(density) { tab.toDp() }
+        val textMargin = 6.dp
+        fun sidePad(edge: Int) = tabDp + (if (edge < 0) tabDp else 0.dp) + textMargin
+
         Layout(
             content = {
                 for (i in 0 until count) {
@@ -52,7 +61,13 @@ fun PuzzleGrid(
                     val top = if (r == 0) 0 else -bottomEdge[r - 1][c]
                     val right = rightEdge[r][c]
                     val bottom = bottomEdge[r][c]
-                    piece(i, puzzlePiecePath(cellW, cellH, tab, top, right, bottom, left))
+                    val pad = PaddingValues(
+                        start = sidePad(left),
+                        top = sidePad(top),
+                        end = sidePad(right),
+                        bottom = sidePad(bottom)
+                    )
+                    piece(i, puzzlePiecePath(cellW, cellH, tab, top, right, bottom, left), pad)
                 }
             }
         ) { measurables, _ ->
