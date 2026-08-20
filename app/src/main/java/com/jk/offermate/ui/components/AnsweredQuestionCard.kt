@@ -2,7 +2,7 @@ package com.jk.offermate.ui.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,17 +34,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jk.offermate.agent.AnsweredQuestion
-import com.jk.offermate.ui.theme.BadgeHotBg
-import com.jk.offermate.ui.theme.BadgeHotText
 import com.jk.offermate.ui.theme.TextSecondary
 
 /**
  * 题目卡片：题目常显，答案默认隐藏，整卡点击可来回显示/隐藏。展开状态用 rememberSaveable 按题目保存。
  *
- * @param borderColor 可选彩色边框（题库按分类着色）。
+ * @param borderColor 可选分类强调色，显示为标题行首的小圆点（不再作为整圈描边）。
  */
 @Composable
 fun AnsweredQuestionCard(
@@ -83,14 +84,24 @@ fun AnsweredQuestionCard(
                 // 动作模式下点击执行动作；否则展开/收起答案
                 if (onActionClick != null) onActionClick() else revealed = !revealed
             },
-        shape = RoundedCornerShape(16.dp),
-        border = borderColor?.let { BorderStroke(1.5.dp, it) },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
       Box(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             if (q.tags.isNotEmpty() || q.practiced) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 分类色收敛为标题行首的小圆点（替代刺眼的整圈描边）
+                    borderColor?.let { c ->
+                        Box(
+                            Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(c)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
                     if (q.tags.isNotEmpty()) {
                         Text(
                             q.tags.joinToString(" · "),
@@ -102,11 +113,14 @@ fun AnsweredQuestionCard(
                         Spacer(Modifier.weight(1f))
                     }
                     if (q.practiced) {
-                        Surface(shape = RoundedCornerShape(8.dp), color = BadgeHotBg) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = ActionPracticeColor.copy(alpha = 0.15f)
+                        ) {
                             Text(
                                 "已刷 ✓",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = BadgeHotText,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = ActionPracticeColor,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
@@ -155,16 +169,30 @@ fun AnsweredQuestionCard(
             }
         }
 
-        // 动作模式：卡片中央叠加半透明大图标作为提示
+        // 动作模式：整卡淡色蒙层 + 居中实心圆形图标芯片，作为清晰的动作靶点
         if (actionIcon != null) {
-            Icon(
-                imageVector = actionIcon,
-                contentDescription = null,
-                tint = actionTint.copy(alpha = 0.38f),
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(actionTint.copy(alpha = 0.10f))
+            )
+            Surface(
+                shape = CircleShape,
+                color = actionTint,
+                shadowElevation = 2.dp,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(72.dp)
-            )
+                    .size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = actionIcon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
         }
       }
     }
