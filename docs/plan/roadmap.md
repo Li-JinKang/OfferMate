@@ -1,6 +1,8 @@
 # 分步实现路线图（Roadmap）
 
-标记规范：`- [ ]` 未完成，`- [x]` 已完成。每阶段末尾有**验收标准**，全部满足才进入下一阶段。
+标记规范：`- [ ]` 未完成，`- [x]` 已完成，`- [~]` 部分完成（含偏差/缺项，见该行说明）。每阶段末尾有**验收标准**，全部满足才进入下一阶段。
+
+> 状态同步（2026-08-19）：本文件勾选已按**代码实际状态**校准。实现与初稿有若干偏差（如：手动 DI 取代 Hilt、Resume 用 DataStore 而非 Room、AI 代码在 `agent/` 包），已就地标注。**尚未实现**清单见文末「未实现汇总」。
 
 ---
 
@@ -8,16 +10,16 @@
 
 目标：把当前 Java/View 空工程改造为 Kotlin + Compose 可编译工程，并跑通一个空单测。
 
-- [ ] 在 `gradle/libs.versions.toml` 增加版本与依赖别名：Kotlin、Compose BOM、Hilt、Coroutines、Retrofit/OkHttp、kotlinx-serialization（或 Moshi）、Room、Navigation-Compose、DataStore、security-crypto、Coil、Jsoup、Readability4J（JVM 正文提取）、junit4、kotlinx-coroutines-test、mockk（或 mockito-kotlin）、Robolectric（可选）。
-- [ ] 修改 `app/build.gradle`：应用 Kotlin/Compose/Hilt/kapt(或 ksp)/kotlinx-serialization 插件；开启 `buildFeatures.compose`；`compileOptions`/`kotlinOptions` 设为 Java 17；保留 `minSdk 26`。
-- [ ] 将 `MainActivity` 迁移为 Kotlin + `ComponentActivity` + Compose `setContent`（占位 UI 即可）。
-- [ ] 配置包结构：`ui/ data/{reader,ai,resume,local,repository} di/ share/`（见项目规划 6.3）。
-- [ ] 配置 Hilt：`@HiltAndroidApp` Application、基础 `@Module`。
-- [ ] 在 `app/src/test` 写一个 `SanityTest`（断言 `true`）并通过 `./gradlew testDebugUnitTest`。
+- [x] 在 `gradle/libs.versions.toml` 增加版本与依赖别名：Kotlin、Compose BOM、Coroutines、OkHttp、kotlinx-serialization、Room、Navigation-Compose、DataStore、security-crypto、Coil、Jsoup、Readability4J、junit4、kotlinx-coroutines-test 等。（**偏差**：未引入 Hilt——改为手动 DI；kotlinx-serialization 用运行时 `JsonElement` API，未上编译器插件。）
+- [x] 修改 `app/build.gradle`：应用 Kotlin/Compose/kotlinx-serialization 插件；开启 `buildFeatures.compose`；Java 17；`minSdk 26`。（**偏差**：无 Hilt/kapt 插件。）
+- [x] 将 `MainActivity` 迁移为 Kotlin + `ComponentActivity` + Compose `setContent`。
+- [x] 配置包结构：`ui/ data/{reader,resume,local,repository,settings,importer,dedup,ocr} agent/ di/ share/ work/`。（**偏差**：AI 相关代码在 `agent/` 而非 `data/ai/`。）
+- [~] ~~配置 Hilt：`@HiltAndroidApp` Application、基础 `@Module`。~~ **未采用 Hilt**，改为手动 DI 组合根 `di/AppContainer`（`OfferMateApplication` 持有）。
+- [~] ~~在 `app/src/test` 写一个 `SanityTest`。~~ 未写占位 SanityTest，直接用大量真实单测覆盖（见各阶段）。
 
 **验收标准**
-- `./gradlew assembleDebug` 编译通过。
-- `./gradlew testDebugUnitTest` 通过（含 SanityTest）。
+- `./gradlew assembleDebug` 编译通过。✅
+- `./gradlew testDebugUnitTest` 通过（真实单测，无 SanityTest 占位）。✅
 
 ---
 
@@ -63,8 +65,8 @@
 目标：先用 **JVM 可测的静态解析**（Jsoup + Readability4J）从 HTML 提取正文并测试；WebView 动态渲染作为降级适配器，最后实现。
 
 ### P2.1 夹具捕获
-- [ ] 捕获牛客链接页面，保存 `app/src/test/resources/fixtures/nowcoder_53245626677297352.html`。
-- [ ] 解析小红书短链 `xhslink.cn/o/6Gz0nDGZxAE` 的重定向真实 URL；尝试捕获正文 HTML 保存为 `xhs_6Gz0nDGZxAE.html`。
+- [x] 捕获牛客链接页面 → `app/src/test/resources/fixtures/html/nowcoder_sample.html`（文件名与初稿不同）。
+- [x] 小红书正文/图片 HTML 夹具 → `xhs_note.html` / `xhs_jsonly.html` / `xhs_imagelist_sample.html`（用于 `XhsNoteExtractor`/`PostImageExtractor` 测试）。
 - [x] 小红书静态抓取拿不到正文（JS 渲染 + 反爬）→ 结论：`XHS: 静态不可用，采用 WebView 登录态方案`。读取方案见 [`xhs-reading.md`](./xhs-reading.md)（参考 MediaCrawler 思路）。
 
 ### P2.2 静态解析层（JVM 可测）
@@ -97,14 +99,14 @@
 
 目标：把简历、帖子、题目、答案、进度、设置（含加密 Key）持久化。
 
-- [ ] Room 实体与 DAO：`Resume`、`ImportedPost`、`Question`、`StudyRecord`（见项目规划第 8 节）。
-- [ ] `DataStore` 保存偏好；`EncryptedSharedPreferences` 保存 DeepSeek API Key、provider、模型名、相关性阈值。
-- [ ] `Repository` 聚合 reader + ai + resume + local。
-- [ ] 单测：DAO 读写（Room in-memory / Robolectric）；`SecureKeyStore` 存取（可抽象接口 + fake 测逻辑）。
+- [x] Room 实体与 DAO：`ImportedPostEntity`、`QuestionEntity`（+ 后续 `CategoryEntity`/`ConversationEntity`/`ChatMessageEntity`）。（**偏差**：`Resume` 用 DataStore 持久化（非 Room）；无独立 `StudyRecord` 实体——刷题进度存于 `QuestionEntity.practiced`。）
+- [x] `DataStore` 保存偏好（`DataStorePreferencesStore`）；`EncryptedSharedPreferences`（`EncryptedPrefsKeyStore`）保存各 provider 的 API Key；provider/模型名/baseUrl/相关性阈值经 `SettingsRepository` 管理。
+- [x] `Repository` 聚合：`AppContainer` 组合 reader + agent + resume + local 各仓库。
+- [x] 单测：`QuestionRepositoryTest`/`CategoryRepositoryTest`/`ConversationRepositoryTest`（DAO 读写）、`DefaultSettingsRepositoryTest`（Key 存取，fake keystore）。
 
 **验收标准**
-- DAO 与设置存取单测通过。
-- 能以编程方式加密保存并读回 API Key（不明文落盘）。
+- DAO 与设置存取单测通过。✅
+- 能加密保存并读回 API Key（`EncryptedSharedPreferences`，不明文落盘）。✅
 
 ---
 
@@ -117,23 +119,23 @@
 - [ ] `MemoryManager`：`remember`（含 supersede 冲突处理）、`recall`（scope 过滤+排序+预算）、`decay/prune`、`switchProfile`。
 - [ ] `ResumeMemoryExtractor` / `ConversationMemoryExtractor`（经 `AiClient`）产出事实候选。
 
-### P3.5.2 会话与对话记忆
-- [ ] Room：`Conversation` / `ChatMessage` / `MemorySummary` 实体与 DAO。
-- [ ] `TokenEstimator`（CJK/英文启发式）。
-- [ ] `ChatMemory` 三策略：`MessageWindowMemory` / `TokenWindowMemory` / `SummarizingMemory`。
-- [ ] `ContextAssembler`：system + 激活档案事实(recall) + 长期摘要 + 窗口历史 + 当前输入。
-- [ ] `ConversationRepository`：会话 CRUD、追加消息、加载上下文。
+### P3.5.2 会话与对话记忆（★随"追问"功能已大部分落地）
+- [x] Room：`ConversationEntity` / `ChatMessageEntity` 实体与 DAO。（**缺**：`MemorySummary`（跨会话长期摘要）未实现。）
+- [x] `TokenEstimator`（CJK/英文启发式）：`HeuristicTokenEstimator`。
+- [~] `ChatMemory`：已实现 `MessageWindowMemory` / `TokenWindowMemory`；**缺 `SummarizingMemory`（摘要记忆）**。
+- [~] `ContextAssembler`：已实现 system + 窗口历史 + 当前输入；**缺"激活档案事实(recall) + 长期摘要"**（依赖 P3.5.1 记忆层）。
+- [x] `ConversationRepository`：会话 CRUD、追加消息、加载上下文（每题可多轮独立会话）。
 
 ### P3.5.3 单元测试（必须全绿）
-- [ ] 取代逻辑：同 key 新值 → 旧 `SUPERSEDED`、新 `ACTIVE`、`supersedesId` 链、历史可查。
-- [ ] 方向切换：切/建 profile 后 `recall` 仅返回该 profile + GLOBAL 的 ACTIVE 事实，旧方向不泄漏。
-- [ ] 相关性随记忆变化：Java 后端 vs Android 激活档案下，`ContextAssembler`/`recall` 输出差异。
-- [ ] 抽取+冲突：从"改投安卓"文本抽取 → `remember` 正确取代 `target_role`（`FakeAiClient` 夹具）。
-- [ ] 衰减/修剪：超额/过期事实被降权或清理。
-- [ ] 会话窗口/摘要/上下文顺序正确；会话 CRUD 持久化正确（in-memory Room）。
+- [ ] 取代逻辑：同 key 新值 → 旧 `SUPERSEDED`、新 `ACTIVE`、`supersedesId` 链、历史可查。（依赖 P3.5.1，未做）
+- [ ] 方向切换：切/建 profile 后 `recall` 仅返回该 profile + GLOBAL 的 ACTIVE 事实，旧方向不泄漏。（未做）
+- [ ] 相关性随记忆变化：Java 后端 vs Android 激活档案下，`ContextAssembler`/`recall` 输出差异。（未做）
+- [ ] 抽取+冲突：从"改投安卓"文本抽取 → `remember` 正确取代 `target_role`（`FakeAiClient` 夹具）。（未做）
+- [ ] 衰减/修剪：超额/过期事实被降权或清理。（未做）
+- [x] 会话窗口/上下文顺序正确；会话 CRUD 持久化正确：`ChatMemoryTest`/`ContextAssemblerTest`/`HeuristicTokenEstimatorTest`/`ConversationRepositoryTest`（**摘要相关未覆盖**）。
 
 **验收标准**
-- 上述 JVM 单测全绿；全程不联网、无真实 Key。
+- 会话层单测全绿 ✅；记忆事实/档案层（P3.5.1）尚未开始，验收未达成。
 
 ---
 
@@ -156,14 +158,14 @@
 - [ ] 入队前校验 DeepSeek Key，无 Key 引导去设置（目前仅校验"是否已配置简历"，未校验 Key；待办）。
 
 ### P4.3 简历与结果
-- [ ] 简历页：SAF 选文件导入 PDF/纯文本，端侧解析为 `ResumeProfile`（PdfBox-Android；DOCX/OCR 二期）。
-- [ ] 题目列表页：按相关性/考点/难度展示，标注来源链接与相关性理由。
-- [ ] 刷题页（占位，机制后续探讨）：答案默认隐藏。
+- [x] 简历页：SAF 选 PDF 导入，端侧解析为 `ResumeProfile`（`PdfBoxResumeTextExtractor`）+ PDF 渲染预览 + 识别文本可编辑（见"简历页改版"）。
+- [x] 题目列表页：`QuestionsScreen`/`QuizCategoryScreen` 按相关性/难度/分类展示（分类拼图总览 + 分类内题目列表）。（**缺**：题目卡片上标注来源链接跳转/相关性理由展示较弱。）
+- [x] 刷题页：`QuizScreen`/`QuizCategoryScreen`，答案默认折叠、`practiced` 标记进度（已超出"占位"）。
 
 ### P4.4 我的 & 设置
-- [ ] 我的页：简历、职业档案切换、（后续）记忆管理。
-- [ ] 设置（并入我的）：填写/校验 DeepSeek Key、相关性阈值、隐私/一键删除、离线开关（占位）。
-- [ ] ViewModel 单测：UiState 流转（用 fake repository）。
+- [~] 我的页（已并入"设置"页 `ProfileScreen`）：**简历/AI 设置已做**；**职业档案切换、记忆管理未做**（依赖 P3.5.1）。
+- [~] 设置：填写 DeepSeek/多 provider Key ✅、相关性阈值滑杆 ✅；**缺：Key 有效性校验、隐私说明/一键删除数据、离线开关**。
+- [~] ViewModel 单测：`HomeViewModelTest` ✅；**`SettingsViewModel`/`ResumeViewModel` 未测**。
 
 **验收标准**
 - 分享一个链接后**可立即退出 App**，后台完成读取+分析，完成有通知，回来能在题目列表看到结果。
@@ -175,17 +177,17 @@
 
 目标：接入真实网络与真实 DeepSeek，端到端跑通两个基准链接。
 
-- [ ] 实现 `DeepSeekClient`（Retrofit，OpenAI 兼容 `chat/completions`），用 BYOK 的 Key 直连；实现重试/限流/超时。
-- [ ] 集成测试（需真实 Key，标注 `@Ignore` 默认跳过，可手动开启）：对夹具正文跑真实分析并人工核对质量。
-- [ ] 端到端：分享牛客链接 → WebView/静态读取正文 → 分析 → 刷题，真机跑通。
-- [ ] 小红书：按 P2.1 结论落地（若需参考项目，接入其读取方式）。
-- [ ] 异常兜底：读取失败→手动粘贴；Key 无效→引导设置；无相关题目→友好提示。
-- [ ] 免责声明、来源标注、隐私说明、一键删除数据。
-- [ ] 性能与体验打磨；可选 P6：端侧本地模型离线开关。
+- [x] 实现 `DeepSeekClient`（OkHttp，OpenAI 兼容 `chat/completions` + 工具轮 `ToolCallingLlm`），BYOK Key 直连、可切 baseUrl/model；已设连接/读/写/整体超时。（**缺**：显式重试/限流退避——目前依赖 `WorkManager` 任务级指数退避。）
+- [x] 集成/探针测试（真实网络）：`LiveLinkReadingTest`（真实链接读取）、`ImageOcrProbeTest`（多模态 OCR 探针，需 `-Docr.key`）；默认可跳过、手动开启。
+- [ ] 端到端：分享牛客链接 → WebView/静态读取正文 → 分析 → 刷题，真机跑通。（**未做真机验证**，本机仅编译+单测）
+- [x] 小红书：按 P2.1 结论落地——WebView 离屏渲染 + `XhsNoteExtractor` 解析 `__INITIAL_STATE__`。
+- [~] 异常兜底：读取失败→手动粘贴 ✅、无相关题目→提示 ✅；**Key 无效→引导设置 未做**。
+- [~] 免责声明 ✅（设置页脚）、来源标注（部分）；**隐私说明、一键删除数据 未做**。
+- [ ] 性能与体验打磨（持续）；可选 P6：端侧本地模型离线开关（未做）。
 
 **验收标准**
-- 用真实 DeepSeek Key，对牛客链接端到端产出相关题目与答案并可刷题。
-- 所有失败路径都有明确兜底，不崩溃。
+- 用真实 DeepSeek Key，对牛客链接端到端产出相关题目与答案并可刷题。（待真机验证）
+- 所有失败路径都有明确兜底，不崩溃。（大部分已覆盖；Key 无效引导缺失）
 
 ---
 
@@ -259,10 +261,10 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 - **中英文数字混排要求**：计算机面经含大量英文专业术语（如 `Kotlin`、`Handler`、`ThreadLocal`）、数字、符号。选 **中文识别模型** `com.google.mlkit:text-recognition-chinese`——其模型在识别中文的同时也覆盖**拉丁字母与数字**，适合中英混排；上线前用探针/真机核对英文术语与代码样式（大小写、点号、括号）的识别质量。若个别纯英文长段落识别偏差明显，再评估对该图**叠加拉丁模型** `text-recognition`（`TextRecognition.getClient(TextRecognizerOptions.DEFAULT)`）做二次校正的必要性。
 - 依赖：`com.google.mlkit:text-recognition-chinese`（APK +数 MB，模型可用 Play 按需下发以减小包体）。
 
-**待办**：
-- [ ] 抽象 `OcrTextRecognizer` 接口（输入图片字节/Bitmap → 输出文本 + 置信度/块）；Android/ML Kit 实现（真机或 androidTest 验证），测试用 fake，合并/排版逻辑 JVM 可测。
-- [ ] 多图顺序拼接（按 imageList 顺序）、去重与空白/水印行清理；OCR 结果缓存进 `ImportedPost` 避免重复识别。
-- [ ] 接入读取链路：WebView 取到 `__INITIAL_STATE__` → `PostImageExtractor` 提图 → 下载 → ML Kit OCR → 文本拼入正文 → 走"抽题→相关性→作答"。
+**进度**：
+- [x] 抽象 `OcrTextRecognizer` 接口 + ML Kit 实现 `MlKitTextRecognizer`（中文识别模型，覆盖中英数字混排）；`ImageOcrInstrumentedTest` 真机验证。
+- [~] 多图顺序拼接（`ImportInteractor.enrichWithImageOcr` 按 imageList 顺序拼入正文，标注"图1/图2…"）✅；**缺：去重/空白·水印行清理、OCR 结果缓存进 `ImportedPost` 避免重复识别**。
+- [x] 接入读取链路：读取正文 → `PostImageExtractor` 提图 → `OkHttpImageFetcher` 下载 → ML Kit OCR → 文本拼入正文 → 走"抽题→相关性→作答"（`ImportInteractor` 已装配）。
 
 **运行 OCR 探针校验**：
 ```
@@ -325,10 +327,10 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 - **可插拔 Provider**：仅对**支持 function calling** 的 provider 启用工具轮；不支持时回退为"直接携带精简画像"的旧路径。
 
 ### 测试（测试先行，尽量 JVM 可测）
-- [ ] `ToolCallingAgent` 循环：用 `FakeAiClient` 先返回一个 `tool_call(read_resume)`、再返回最终答案 → 断言工具被调用、结果被回填、最终答案正确、步数上限生效。
-- [ ] `ResumeReaderTool`：给定简历文本 + query → 返回相关片段（纯逻辑可测）。
-- [ ] Prompt/协议：`tools` 定义与 `tool_calls` 解析（含畸形/多次调用/无调用直接作答）。
-- [ ] MCP 适配：用 fake MCP server（内存实现）验证 `listTools`/`callTool` → `Tool` 映射。
+- [x] `ToolCallingAgent` 循环：`ToolCallingAgentTest`（工具轮/未知工具/步数上限）。
+- [x] `ResumeReaderTool`：`ResumeReaderToolTest`（query 过滤纯逻辑）。
+- [x] Prompt/协议：`DeepSeekToolCallingTest`（`tools` 请求 + `tool_calls`/final 解析 + tool 结果序列化）。
+- [ ] MCP 适配：用 fake MCP server（内存实现）验证 `listTools`/`callTool` → `Tool` 映射。（未做，无 `McpClient`）
 
 ### 已完成 ✅（自研薄框架核心）
 - 端口与循环：`ToolCallingLlm`（工具轮端口）+ `LlmTurn`(Final/ToolInvocations) + `Tool`/`ToolRegistry` + `ToolCallingAgent`（发送→执行工具→回填→再发送，带 maxSteps 兜底）。
@@ -353,7 +355,7 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 - [ ] 工具轮日志（TAG=OfferMate）便于真机观察模型是否调用工具、query 与结果。
 - [ ] `McpClient` + 配置项（用户可增删 MCP server）+ tool 映射。
 - [ ] Skills 打包机制（模板 + 工具集）与在流水线中的挂载。
-- [ ] `DeepSeekClient` 等实现工具轮的真实请求/解析（P5，真机/真实 Key 验证）。
+- [~] `DeepSeekClient` 工具轮的真实请求/解析已实现并单测（`DeepSeekToolCallingTest`）；**真机/真实 Key 端到端验证仍待做**。
 
 ---
 
@@ -388,3 +390,54 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
    - 依赖影响已处理：相关性/作答改为把 `ResumeProfile.rawText`（截断 2000 字）注入 Prompt；`AnalyzePostWorker` 与 `HomeViewModel` 的"已配置简历"判断由 `targetRole` 改为 `rawText` 非空，避免导入误拦。
    - ⚠️ 需真机验证：PDF 渲染、缩放手势、预览 UI（本机仅编译 + 单测通过，未跑设备）。
    - 待增强：从简历文本 AI 抽取岗位/技能画像（接 P3.5），进一步提升相关性精度。
+
+---
+
+## 未实现汇总（截至 2026-08-19，按优先级/依赖）
+
+> 说明：以下是核对代码后**确认尚未实现**的项。已完成的大头（P1 分析流水线、P2 读取+WebView+OCR、P3 存储+BYOK、P4 主要 UI、P5 真实 DeepSeek 客户端、去重、分类、追问会话、工具轮自研框架）不再列出。
+
+### A. 端侧记忆管理（P3.5.1，最大缺口，多处依赖）
+- `CareerProfile` / `MemoryFact` / `MemoryEvent` 的 Room 实体与 DAO；`Resume` 多份支持。
+- `MemoryManager`：`remember`（含 supersede 冲突链）、`recall`（scope 过滤+排序+预算）、`decay/prune`、`switchProfile`。
+- `ResumeMemoryExtractor` / `ConversationMemoryExtractor`（经 `AiClient` 产出事实候选）。
+- 对应单测：取代逻辑、方向切换隔离、相关性随记忆变化、抽取+冲突、衰减/修剪（P3.5.3 全部）。
+- 关联下游：**从简历 AI 抽取岗位/技能画像**、**简历更新 → 相关度连锁重算**、`ContextAssembler` 接入 `recall`、`recall_memory` 工具——均卡在此。
+
+### B. 会话记忆增强（P3.5.2 缺项）
+- `MemorySummary` 实体 + `SummarizingMemory`（跨会话长期摘要）；`ContextAssembler` 注入"档案事实 + 长期摘要"。
+
+### C. 设置 / 我的页缺项（P4.4）
+- DeepSeek/各 provider **Key 有效性校验**（当前仅保存启用）。
+- **隐私说明 + 一键删除全部数据**。
+- **离线开关**（占位）。
+- **职业档案切换、记忆管理** 入口（依赖 A）。
+- `SettingsViewModel` / `ResumeViewModel` 的 ViewModel 单测。
+
+### D. 导入健壮性（P4.2）
+- **入队前校验 DeepSeek Key**，无 Key 引导去设置（当前仅校验是否已配置简历）。
+
+### E. OCR 收尾
+- OCR 结果**去重 / 空白·水印行清理**。
+- OCR 结果**缓存进 `ImportedPost`**，避免重复识别。
+
+### F. 工具 / MCP / Skills（架构级，后续）
+- 更多工具：`recall_memory`（接 A）、`list_categories` 等。
+- 工具轮**日志**（真机观察模型是否调用工具及 query/结果）。
+- `McpClient` + 用户可配置 MCP server + tool 映射；对应 fake MCP server 单测。
+- **Skills 打包机制**（提示词模板 + 工具集）与流水线挂载。
+
+### G. 小红书后备与验证
+- `XhsWebViewReader : DynamicContentReader` + 登录态（仅当遇到需登录/静态拿不到的笔记再做）。
+- P2.4 / OCR / PDF 预览 / 工具轮的 **instrumented 或真机验证**（不纳入 JVM 单测门槛）。
+
+### H. P5 打磨
+- **端到端真机跑通**（分享链接 → 读取 → 分析 → 刷题）。
+- `DeepSeekClient` 显式**重试/限流退避**（当前靠 WorkManager 任务级退避）。
+- **来源链接跳转 / 相关性理由**在题目卡片上的完整展示。
+- 免责/隐私/一键删除（与 C 重叠）、性能体验打磨、可选端侧本地模型离线开关。
+
+### 其它增强（低优先）
+- 分类**重命名**、手动题**编辑**（当前支持增/删）。
+- 去重命中时"保留相关性更高者/记录来源计数"合并（当前为跳过入库）、LSH 分带、端侧 embedding 语义去重。
+- 题库拼图：更丰富配色、**拖拽排序**（自定义顺序持久化）。
