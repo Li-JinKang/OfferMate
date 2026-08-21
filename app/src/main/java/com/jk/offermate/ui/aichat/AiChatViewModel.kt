@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /** 抽屉里的一条历史对话（[questionId] 为空即自由对话）。 */
 data class ConversationHistoryItem(
@@ -26,6 +27,8 @@ data class ConversationHistoryItem(
     val questionId: String?,
     val title: String,
     val updatedAt: Long,
+    /** 是否置顶。 */
+    val pinned: Boolean = false,
     /** 搜索命中的消息片段（仅内容命中时有值；标题命中或非搜索态为 null）。 */
     val snippet: String? = null,
     /** 命中消息 id（用于打开会话后滚动定位；无内容命中为 null）。 */
@@ -55,7 +58,7 @@ data class AiChatDrawerState(
  */
 class AiChatViewModel(
     questionRepository: QuestionRepository,
-    conversationRepository: ConversationRepository
+    private val conversationRepository: ConversationRepository
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -82,7 +85,13 @@ class AiChatViewModel(
                 title.ifBlank { questionId?.let { questionById[it]?.question } ?: "新对话" }
 
             val allHistory = conversations.map { c ->
-                ConversationHistoryItem(c.id, c.questionId, titleOf(c.title, c.questionId), c.updatedAt)
+                ConversationHistoryItem(
+                    conversationId = c.id,
+                    questionId = c.questionId,
+                    title = titleOf(c.title, c.questionId),
+                    updatedAt = c.updatedAt,
+                    pinned = c.pinned
+                )
             }
             // 非搜索态用全部会话；搜索态用按内容命中的结果（带片段与命中消息 id）
             val history = if (searchHits == null) {
@@ -94,6 +103,7 @@ class AiChatViewModel(
                         questionId = h.questionId,
                         title = titleOf(h.title, h.questionId),
                         updatedAt = h.updatedAt,
+                        pinned = h.pinned,
                         snippet = h.snippet,
                         hitMessageId = h.hitMessageId
                     )
@@ -122,6 +132,23 @@ class AiChatViewModel(
 
     fun onQueryChange(value: String) {
         query.value = value
+    }
+
+    /** 删除一段会话历史（连同其消息）。 */
+    fun deleteConversation(conversationId: String) {
+        viewModelScope.launch { conversationRepository.clear(conversationId) }
+    }
+
+    /** 置顶 / 取消置顶。 */
+    fun setPinned(conversationId: String, pinned: Boolean) {
+        viewModelScope.launch { conversationRepository.setPinned(conversationId, pinned) }
+    }
+
+    /** 重命名会话（标题为空则忽略）。 */
+    fun rename(conversationId: String, title: String) {
+        val t = title.trim()
+        if (t.isEmpty()) return
+        viewModelScope.launch { conversationRepository.updateTitle(conversationId, t) }
     }
 
     companion object {

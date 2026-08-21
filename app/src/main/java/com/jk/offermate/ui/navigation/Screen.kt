@@ -2,8 +2,8 @@ package com.jk.offermate.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
@@ -17,10 +17,10 @@ sealed class Screen(
 ) {
     data object Home : Screen("home", "主页", Icons.Filled.Home)
     data object Quiz : Screen("quiz", "题库", Icons.AutoMirrored.Filled.List)
-    data object AiChat : Screen("aichat", "AI对话", Icons.Filled.Email)
+    data object AiChat : Screen("aichat", "AI对话", AppIcons.ChatBubble)
 
     /** 设置页（原“我的”）：不再是 Tab，作为独立页面从 AI 对话页进入。 */
-    data object Settings : Screen("profile", "设置", Icons.Filled.Email)
+    data object Settings : Screen("profile", "设置", Icons.Filled.Settings)
 
     companion object {
         // 用 lazy 延迟到首次访问再构造，避免 sealed class 与 data object 的类初始化顺序问题

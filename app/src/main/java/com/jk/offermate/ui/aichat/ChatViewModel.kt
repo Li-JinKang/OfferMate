@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -53,6 +54,15 @@ class ChatViewModel(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** 当前会话标题：取自会话记录（首轮对话后由摘要生成）；无标题/无会话时为 null。 */
+    val title: StateFlow<String?> =
+        conversationId
+            .flatMapLatest { id ->
+                if (id == null) flowOf(null) else conversationRepository.observeConversation(id)
+            }
+            .map { it?.title?.takeIf { t -> t.isNotBlank() } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
 
@@ -70,6 +80,8 @@ class ChatViewModel(
             _sending.value = true
             try {
                 val convId = ensureConversation()
+                // 记录是否为首轮：追加用户消息前历史为空即首轮，用于生成一次性标题。
+                val isFirstRound = conversationRepository.history(convId).isEmpty()
                 conversationRepository.append(convId, Role.USER, content)
                 val reply = followUpService.reply(
                     context = currentContext(),
@@ -77,6 +89,7 @@ class ChatViewModel(
                     history = conversationRepository.history(convId)
                 )
                 conversationRepository.append(convId, Role.ASSISTANT, reply)
+                runCatching { maybeGenerateTitle(convId, isFirstRound, content, reply) }
             } catch (e: Exception) {
                 _error.value = e.message ?: "回复失败，请稍后重试"
             } finally {
@@ -127,6 +140,26 @@ class ChatViewModel(
 
     fun consumeError() { _error.value = null }
     fun consumeNotice() { _notice.value = null }
+
+    /**
+     * 首轮对话结束后，为**无标题**的会话生成一个摘要标题（仅一次，后续不再更新）。
+     * 绑定题目的会话已用题目作标题，不受影响。
+     */
+    private suspend fun maybeGenerateTitle(
+        convId: String,
+        isFirstRound: Boolean,
+        userText: String,
+        reply: String
+    ) {
+        if (!isFirstRound) return
+        val current = conversationRepository.observeConversation(convId).first()
+        if (current != null && current.title.isNotBlank()) return
+        val summary = runCatching { followUpService.summarizeTitle(userText, reply) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+        val title = summary ?: userText.trim().take(15)
+        if (title.isNotBlank()) conversationRepository.updateTitle(convId, title)
+    }
 
     /** 首次发送时懒创建会话：绑定题目走 getOrCreate，否则新建自由会话。 */
     private suspend fun ensureConversation(): String {

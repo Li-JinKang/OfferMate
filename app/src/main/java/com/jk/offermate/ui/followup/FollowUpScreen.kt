@@ -101,6 +101,8 @@ fun FollowUpScreen(
     onConsumeNotice: () -> Unit,
     /** 若提供，则顶部栏显示菜单（抽屉）图标而非返回箭头（AI 对话 Tab 内嵌用）。 */
     onOpenDrawer: (() -> Unit)? = null,
+    /** 顶部标题覆盖：非空时优先展示（AI 对话用首轮摘要标题）。 */
+    titleOverride: String? = null,
     /** 内容底部留白：为悬浮 dock（输入胶囊 + Tab 胶囊）预留空间。 */
     contentBottomPadding: Dp = 0.dp,
     /** 从搜索结果进入时，要定位到的消息下标；非空则打开后滚动到该条而非底部。 */
@@ -142,7 +144,8 @@ fun FollowUpScreen(
             .padding(bottom = contentBottomPadding)
     ) {
         ChatTopBar(
-            title = conversationTitle(conversations, activeConversationId, question),
+            title = titleOverride?.takeIf { it.isNotBlank() }
+                ?: conversationTitle(conversations, activeConversationId, question),
             onBack = onBack,
             onNewSession = onNewSession,
             onOpenDrawer = onOpenDrawer
@@ -291,7 +294,7 @@ internal fun CompactChatInput(
     }
 }
 
-/** 顶部栏：返回 + 居中标题（含“快速模式”副标题） + 新开一轮。 */
+/** 顶部栏：返回 + 居中标题（含“快速模式”副标题） + 新对话。 */
 @Composable
 private fun ChatTopBar(
     title: String,
@@ -336,19 +339,9 @@ private fun ChatTopBar(
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    BoltIcon(tint = Indigo, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.width(3.dp))
-                    Text(
-                        "快速模式",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Indigo
-                    )
-                }
             }
             IconButton(onClick = onNewSession) {
-                Icon(Icons.Filled.Add, contentDescription = "新开一轮", tint = TextPrimary)
+                Icon(Icons.Filled.Add, contentDescription = "新对话", tint = TextPrimary)
             }
         }
     }
@@ -668,5 +661,5 @@ private fun conversationTitle(
     val active = conversations.firstOrNull { it.id == activeConversationId }
     return active?.title?.takeIf { it.isNotBlank() }
         ?: question?.question?.takeIf { it.isNotBlank() }
-        ?: "AI 对话"
+        ?: "新对话"
 }

@@ -24,9 +24,21 @@ interface ConversationDao {
     @Query("SELECT * FROM conversation WHERE questionId = :questionId ORDER BY createdAt ASC")
     fun observeAllByQuestionId(questionId: String): Flow<List<ConversationEntity>>
 
-    /** 全部会话（按最近活跃时间倒序），用于 AI 对话页抽屉的历史列表。 */
-    @Query("SELECT * FROM conversation ORDER BY updatedAt DESC")
+    /** 全部会话（置顶优先，其余按最近活跃时间倒序），用于 AI 对话页抽屉的历史列表。 */
+    @Query("SELECT * FROM conversation ORDER BY pinned DESC, updatedAt DESC")
     fun observeAllConversations(): Flow<List<ConversationEntity>>
+
+    /** 观察单个会话（用于顶部标题实时反映摘要标题）。 */
+    @Query("SELECT * FROM conversation WHERE id = :id")
+    fun observeById(id: String): Flow<ConversationEntity?>
+
+    /** 更新会话标题（首轮对话后生成摘要标题时调用一次；也用于重命名）。 */
+    @Query("UPDATE conversation SET title = :title WHERE id = :id")
+    suspend fun updateTitle(id: String, title: String)
+
+    /** 设置会话置顶状态。 */
+    @Query("UPDATE conversation SET pinned = :pinned WHERE id = :id")
+    suspend fun setPinned(id: String, pinned: Boolean)
 
     /**
      * 按会话标题或消息内容搜索会话（按最近活跃倒序）。
@@ -34,13 +46,13 @@ interface ConversationDao {
      * 仅标题命中时二者为 null。[kw] 需已包 `%关键词%` 并转义（配合 ESCAPE '\'）。
      */
     @Query(
-        "SELECT c.id AS id, c.questionId AS questionId, c.title AS title, c.updatedAt AS updatedAt, " +
+        "SELECT c.id AS id, c.questionId AS questionId, c.title AS title, c.updatedAt AS updatedAt, c.pinned AS pinned, " +
             "(SELECT m.content FROM chat_message m WHERE m.conversationId = c.id AND m.content LIKE :kw ESCAPE '\\' ORDER BY m.id DESC LIMIT 1) AS snippet, " +
             "(SELECT m.id FROM chat_message m WHERE m.conversationId = c.id AND m.content LIKE :kw ESCAPE '\\' ORDER BY m.id DESC LIMIT 1) AS hitMessageId " +
             "FROM conversation c " +
             "WHERE c.title LIKE :kw ESCAPE '\\' " +
             "OR EXISTS (SELECT 1 FROM chat_message m WHERE m.conversationId = c.id AND m.content LIKE :kw ESCAPE '\\') " +
-            "ORDER BY c.updatedAt DESC LIMIT :limit"
+            "ORDER BY c.pinned DESC, c.updatedAt DESC LIMIT :limit"
     )
     fun search(kw: String, limit: Int): Flow<List<ConversationSearchRow>>
 
@@ -83,6 +95,7 @@ data class ConversationSearchRow(
     val questionId: String?,
     val title: String,
     val updatedAt: Long,
+    val pinned: Boolean,
     val snippet: String?,
     val hitMessageId: Long?
 )

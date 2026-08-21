@@ -24,6 +24,7 @@ data class ConversationSearchHit(
     val questionId: String?,
     val title: String,
     val updatedAt: Long,
+    val pinned: Boolean,
     val snippet: String?,
     val hitMessageId: Long?
 )
@@ -49,6 +50,15 @@ interface ConversationRepository {
 
     /** 观察全部会话（按最近活跃时间倒序），用于 AI 对话页抽屉的历史列表。 */
     fun observeAllConversations(): Flow<List<ConversationEntity>>
+
+    /** 观察单个会话（用于顶部标题实时反映摘要标题）。 */
+    fun observeConversation(conversationId: String): Flow<ConversationEntity?>
+
+    /** 更新会话标题（首轮对话后生成摘要标题时调用一次；也用于重命名）。 */
+    suspend fun updateTitle(conversationId: String, title: String)
+
+    /** 设置会话置顶状态。 */
+    suspend fun setPinned(conversationId: String, pinned: Boolean)
 
     /** 搜索会话：标题或消息内容命中（DB LIKE，结果有上限），带出命中片段与消息 id。 */
     fun searchConversations(query: String, limit: Int = 50): Flow<List<ConversationSearchHit>>
@@ -120,6 +130,15 @@ class RoomConversationRepository(
     override fun observeAllConversations(): Flow<List<ConversationEntity>> =
         dao.observeAllConversations()
 
+    override fun observeConversation(conversationId: String): Flow<ConversationEntity?> =
+        dao.observeById(conversationId)
+
+    override suspend fun updateTitle(conversationId: String, title: String) =
+        dao.updateTitle(conversationId, title)
+
+    override suspend fun setPinned(conversationId: String, pinned: Boolean) =
+        dao.setPinned(conversationId, pinned)
+
     override fun searchConversations(query: String, limit: Int): Flow<List<ConversationSearchHit>> {
         val kw = query.trim()
         if (kw.isEmpty()) return flowOf(emptyList())
@@ -130,6 +149,7 @@ class RoomConversationRepository(
                     questionId = r.questionId,
                     title = r.title,
                     updatedAt = r.updatedAt,
+                    pinned = r.pinned,
                     // 只保留关键词附近一小段，控制堆占用与展示长度
                     snippet = r.snippet?.let { buildSnippet(it, kw) },
                     hitMessageId = r.hitMessageId

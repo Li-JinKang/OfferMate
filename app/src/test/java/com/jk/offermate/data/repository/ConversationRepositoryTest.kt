@@ -47,6 +47,21 @@ class ConversationRepositoryTest {
         override fun observeAllConversations(): Flow<List<ConversationEntity>> =
             conversations.map { map -> map.values.sortedByDescending { it.updatedAt } }
 
+        override fun observeById(id: String): Flow<ConversationEntity?> =
+            conversations.map { map -> map[id] }
+
+        override suspend fun updateTitle(id: String, title: String) {
+            conversations.value[id]?.let {
+                conversations.value = conversations.value + (id to it.copy(title = title))
+            }
+        }
+
+        override suspend fun setPinned(id: String, pinned: Boolean) {
+            conversations.value[id]?.let {
+                conversations.value = conversations.value + (id to it.copy(pinned = pinned))
+            }
+        }
+
         override suspend fun insert(conversation: ConversationEntity) {
             conversations.value = conversations.value + (conversation.id to conversation)
         }

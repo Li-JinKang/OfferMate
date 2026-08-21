@@ -17,5 +17,7 @@ data class ConversationEntity(
     val questionId: String?,
     val title: String,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    /** 是否置顶：置顶会话在历史列表中恒排在最前。 */
+    val pinned: Boolean = false
 )

@@ -30,6 +30,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -141,7 +143,9 @@ fun BottomDock(
     inputContent: (@Composable () -> Unit)?,
     inputInFront: Boolean,
     onInputInFrontChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** dock 整体透明度提供器：AI 对话页随抽屉手势进度淡入淡出（1=显示，0=隐藏）。 */
+    contentAlpha: () -> Float = { 1f }
 ) {
     val tabPill: @Composable () -> Unit = {
         TabPill(currentDestination = currentDestination, onNavigate = onNavigate)
@@ -153,7 +157,9 @@ fun BottomDock(
             modifier = modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+                // 此分支（Home/Quiz）不做淡出，alpha 恒为 1，无需离屏合成。
+                .graphicsLayer { alpha = contentAlpha() },
             contentAlignment = Alignment.Center
         ) {
             tabPill()
@@ -173,31 +179,49 @@ fun BottomDock(
         label = "tabsOffset"
     )
 
+    // 外层承载淡入淡出：用离屏合成把「胶囊 + 投影」作为一个整体统一调透明度，
+    // 避免逐指令调制导致胶囊变半透明、底下投影透出来发灰。
+    // 关键：graphicsLayer 放在内边距之外，让离屏缓冲在胶囊四周留出投影空间，
+    // 否则柔和投影会被矩形缓冲边缘裁成直角。
     Box(
         modifier = modifier
             .fillMaxWidth()
             // imePadding 在外、navigationBarsPadding 在内：键盘弹起时上移并消抵与导航栏的重叠
             .imePadding()
             .navigationBarsPadding()
-            .padding(horizontal = 24.dp)
-            .padding(bottom = 12.dp)
-            .height(DockPillHeight + DockPeek)
+            .graphicsLayer {
+                val a = contentAlpha()
+                alpha = a
+                // 仅在淡出过程中启用离屏合成；完全显示时用默认策略，省去无谓的离屏缓冲。
+                compositingStrategy =
+                    if (a < 1f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+            },
+        contentAlignment = Alignment.BottomCenter
     ) {
-        val inputLayer: @Composable () -> Unit = {
-            DockLayer(offsetY = inputOffset, inFront = inputInFront, onTapPeek = { onInputInFrontChange(true) }) {
-                inputContent()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                // 上/下留出透明外边距作为投影缓冲区（胶囊仍贴着底部，不发生位移）。
+                .padding(top = 16.dp, bottom = 12.dp)
+                .height(DockPillHeight + DockPeek)
+        ) {
+            val inputLayer: @Composable () -> Unit = {
+                DockLayer(offsetY = inputOffset, inFront = inputInFront, onTapPeek = { onInputInFrontChange(true) }) {
+                    inputContent()
+                }
             }
-        }
-        val tabsLayer: @Composable () -> Unit = {
-            DockLayer(offsetY = tabsOffset, inFront = !inputInFront, onTapPeek = { onInputInFrontChange(false) }) {
-                tabPill()
+            val tabsLayer: @Composable () -> Unit = {
+                DockLayer(offsetY = tabsOffset, inFront = !inputInFront, onTapPeek = { onInputInFrontChange(false) }) {
+                    tabPill()
+                }
             }
-        }
-        // 后画的在上层：把当前在前的那个后画
-        if (inputInFront) {
-            tabsLayer(); inputLayer()
-        } else {
-            inputLayer(); tabsLayer()
+            // 后画的在上层：把当前在前的那个后画
+            if (inputInFront) {
+                tabsLayer(); inputLayer()
+            } else {
+                inputLayer(); tabsLayer()
+            }
         }
     }
 }

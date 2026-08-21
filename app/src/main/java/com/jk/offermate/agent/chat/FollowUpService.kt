@@ -3,6 +3,7 @@ package com.jk.offermate.agent.chat
 import com.jk.offermate.agent.AiClient
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.ResumeProfile
+import com.jk.offermate.agent.Role
 import com.jk.offermate.agent.ToolCallingAgent
 import com.jk.offermate.agent.ToolCallingLlm
 import com.jk.offermate.agent.ToolRegistry
@@ -94,6 +95,31 @@ class FollowUpService(
         return stripCodeFence(runTurn(messages).trim())
     }
 
+    /**
+     * 根据首轮对话（用户提问 + 模型回答）生成一个简短标题，用作会话标题。
+     * 直接走普通补全（不走工具轮），失败由调用方兜底。
+     */
+    suspend fun summarizeTitle(userMessage: String, assistantReply: String): String {
+        val messages = listOf(
+            ChatMessage(role = Role.SYSTEM, content = TITLE_INSTRUCTION),
+            ChatMessage(
+                role = Role.USER,
+                content = "用户提问：${userMessage.take(500)}\n\n回答：${assistantReply.take(500)}"
+            )
+        )
+        return sanitizeTitle(aiClient.chat(messages))
+    }
+
+    /** 清洗模型返回的标题：取首行、去除引号/书名号/末尾标点，限制长度。 */
+    private fun sanitizeTitle(raw: String): String =
+        raw.trim()
+            .lineSequence()
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+            .trim()
+            .trim('"', '\'', '「', '」', '“', '”', '《', '》', '.', '。', '：', ':')
+            .take(15)
+
     /** 有工具则走 agent 工具轮（模型可按需 read_resume），否则退回普通补全。 */
     private suspend fun runTurn(messages: List<ChatMessage>): String =
         if (toolsEnabled) {
@@ -114,6 +140,10 @@ class FollowUpService(
     }
 
     private companion object {
+        const val TITLE_INSTRUCTION =
+            "请用一句不超过15个字的简短标题概括这轮对话的主题。只输出标题本身，" +
+                "不要引号、标点符号、前后缀或任何解释。"
+
         const val REVISE_INSTRUCTION =
             "请综合以上讨论，输出这道题**更新后的完整参考答案**。要求：使用 Markdown、分点作答，" +
                 "只输出答案正文，不要输出任何解释、前言或代码围栏。"

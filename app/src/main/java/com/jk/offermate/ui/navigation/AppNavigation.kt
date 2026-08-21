@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -73,6 +74,8 @@ fun OfferMateApp(
     var chatInputContent by remember { mutableStateOf<(@Composable () -> Unit)?>(null) }
     // dock 中输入胶囊是否在前（探头切换用），提升到 app 级，切页时保持不重建。
     var dockInputInFront by remember { mutableStateOf(true) }
+    // dock 整体透明度：AI 对话页随抽屉手势进度淡入淡出（1=显示，0=隐藏）。
+    var dockAlpha by remember { mutableFloatStateOf(1f) }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -85,6 +88,8 @@ fun OfferMateApp(
     val navigateTab: (Screen) -> Unit = { screen ->
         // 离开对话页时输入胶囊归位到前台，下次进入默认显示输入
         dockInputInFront = true
+        // 离开对话页时恢复 dock 不透明，避免残留淡出状态
+        dockAlpha = 1f
         navController.navigate(screen.route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
@@ -176,6 +181,7 @@ fun OfferMateApp(
                         onPendingConsumed = { pendingChatQuestionId = null },
                         registerInputContent = { chatInputContent = it },
                         onResetInputFront = { dockInputInFront = true },
+                        onDockAlpha = { dockAlpha = it },
                         contentBottomPadding = aiDockReserve
                     )
                 }
@@ -212,7 +218,8 @@ fun OfferMateApp(
                     // 仅在对话页把输入胶囊叠上来；其余页面 dock 只有 Tab 胶囊。
                     inputContent = if (onAiChat) chatInputContent else null,
                     inputInFront = dockInputInFront,
-                    onInputInFrontChange = { dockInputInFront = it }
+                    onInputInFrontChange = { dockInputInFront = it },
+                    contentAlpha = { if (onAiChat) dockAlpha else 1f }
                 )
             }
         }
