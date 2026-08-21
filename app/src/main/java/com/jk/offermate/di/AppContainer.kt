@@ -6,12 +6,16 @@ import com.jk.offermate.agent.AiClient
 import com.jk.offermate.agent.AnalysisPipeline
 import com.jk.offermate.agent.AnswerGenerator
 import com.jk.offermate.agent.CategoryClassifier
+import com.jk.offermate.agent.CategoryListTool
+import com.jk.offermate.agent.QuestionSearchTool
 import com.jk.offermate.agent.ResumeReaderTool
+import com.jk.offermate.agent.Tool
 import com.jk.offermate.agent.ToolCallingLlm
 import com.jk.offermate.agent.ToolRegistry
 import com.jk.offermate.agent.DeepSeekClient
 import com.jk.offermate.agent.QuestionExtractor
 import com.jk.offermate.agent.RelevanceMatcher
+import com.jk.offermate.agent.mcp.McpToolRepository
 import com.jk.offermate.agent.chat.ContextAssembler
 import com.jk.offermate.agent.chat.FollowUpService
 import com.jk.offermate.agent.chat.HeuristicTokenEstimator
@@ -65,6 +69,9 @@ interface AppContainer {
     val importInteractor: ImportInteractor
     val postStore: PostStore
     val importScheduler: ImportScheduler
+
+    /** 外部 MCP 服务器工具发现/刷新（其工具会并入共享工具轮）。 */
+    val mcpToolRepository: McpToolRepository
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -124,16 +131,33 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     // provider 支持 function-calling 时可用工具轮
     private val toolCallingLlm: ToolCallingLlm? by lazy { aiClient as? ToolCallingLlm }
 
-    // 简历读取工具：首屏只带最小画像，模型按需拉取简历
-    private val resumeToolRegistry: ToolRegistry by lazy {
-        ToolRegistry(listOf(ResumeReaderTool(resumeTextProvider = { resumeRepository.profile.first().rawText })))
+    // MCP：由设置里的服务器配置发现外部工具（异步刷新，best-effort）
+    override val mcpToolRepository: McpToolRepository by lazy {
+        McpToolRepository(serversProvider = { settingsRepository.mcpServers.first() })
+    }
+
+    // 本地工具：让模型自主取数——读简历、查题库、列分类（首屏只带最小画像，按需拉取）
+    private val localTools: List<Tool> by lazy {
+        listOf(
+            ResumeReaderTool(resumeTextProvider = { resumeRepository.profile.first().rawText }),
+            QuestionSearchTool(search = { q, limit -> questionRepository.search(q, limit).first() }),
+            CategoryListTool(categoriesProvider = {
+                categoryRepository.observeCategories().first() +
+                    questionRepository.observeAll().first().map { it.category }
+            })
+        )
+    }
+
+    // 共享工具注册表：本地工具 + 已发现的 MCP 工具（provider 按需求值，MCP 刷新后自动生效）
+    private val sharedToolRegistry: ToolRegistry by lazy {
+        ToolRegistry { localTools + mcpToolRepository.current() }
     }
 
     override val analysisPipeline: AnalysisPipeline by lazy {
         AnalysisPipeline(
             extractor = QuestionExtractor(aiClient),
-            matcher = RelevanceMatcher(aiClient, toolCallingLlm, resumeToolRegistry),
-            answerer = AnswerGenerator(aiClient, toolCallingLlm, resumeToolRegistry)
+            matcher = RelevanceMatcher(aiClient, toolCallingLlm, sharedToolRegistry),
+            answerer = AnswerGenerator(aiClient, toolCallingLlm, sharedToolRegistry)
         )
     }
 
@@ -145,7 +169,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
                 TokenWindowMemory(maxTokens = 3000, estimator = HeuristicTokenEstimator())
             ),
             toolCallingLlm = toolCallingLlm,
-            toolRegistry = resumeToolRegistry
+            toolRegistry = sharedToolRegistry
         )
     }
 

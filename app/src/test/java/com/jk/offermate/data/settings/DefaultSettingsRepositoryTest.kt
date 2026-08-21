@@ -23,9 +23,11 @@ class DefaultSettingsRepositoryTest {
         val threshold = MutableStateFlow(AppSettings.DEFAULT_THRESHOLD)
         val models = MutableStateFlow<Map<String, String>>(emptyMap())
         val baseUrls = MutableStateFlow<Map<String, String>>(emptyMap())
+        val servers = MutableStateFlow<List<com.jk.offermate.agent.mcp.McpServerConfig>>(emptyList())
 
         override val activeProviderId: Flow<String> = active
         override val relevanceThreshold: Flow<Int> = threshold
+        override val mcpServers: Flow<List<com.jk.offermate.agent.mcp.McpServerConfig>> = servers
         override fun model(providerId: String): Flow<String> =
             models.map { it[providerId] ?: AiProvider.from(providerId).defaultModel }
         override fun baseUrl(providerId: String): Flow<String> =
@@ -35,6 +37,7 @@ class DefaultSettingsRepositoryTest {
         override suspend fun setModel(providerId: String, model: String) { models.value = models.value + (providerId to model) }
         override suspend fun setBaseUrl(providerId: String, url: String) { baseUrls.value = baseUrls.value + (providerId to url) }
         override suspend fun setRelevanceThreshold(value: Int) { threshold.value = value }
+        override suspend fun setMcpServers(servers: List<com.jk.offermate.agent.mcp.McpServerConfig>) { this.servers.value = servers }
     }
 
     private fun repo(

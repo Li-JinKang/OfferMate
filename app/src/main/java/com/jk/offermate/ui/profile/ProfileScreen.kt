@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -59,7 +60,7 @@ import com.jk.offermate.ui.theme.TextSecondary
 @Composable
 fun ProfileRoute(container: AppContainer, onBack: () -> Unit = {}) {
     val settingsViewModel: SettingsViewModel = viewModel(
-        factory = SettingsViewModel.provideFactory(container.settingsRepository)
+        factory = SettingsViewModel.provideFactory(container.settingsRepository, container.mcpToolRepository)
     )
     val resumeViewModel: ResumeViewModel = viewModel(
         factory = ResumeViewModel.provideFactory(
@@ -90,6 +91,10 @@ fun ProfileRoute(container: AppContainer, onBack: () -> Unit = {}) {
         onSelectProvider = settingsViewModel::onSelectProvider,
         onEnable = settingsViewModel::onEnable,
         onThresholdChange = settingsViewModel::onThresholdChange,
+        onAddMcpServer = settingsViewModel::onAddMcpServer,
+        onRemoveMcpServer = settingsViewModel::onRemoveMcpServer,
+        onToggleMcpServer = settingsViewModel::onToggleMcpServer,
+        onRefreshMcp = settingsViewModel::onRefreshMcp,
         onBack = onBack
     )
 }
@@ -107,6 +112,10 @@ fun ProfileScreen(
     onSelectProvider: (AiProvider) -> Unit,
     onEnable: (String, String, String) -> Unit,
     onThresholdChange: (Int) -> Unit,
+    onAddMcpServer: (String, String) -> Unit = { _, _ -> },
+    onRemoveMcpServer: (String) -> Unit = {},
+    onToggleMcpServer: (String, Boolean) -> Unit = { _, _ -> },
+    onRefreshMcp: () -> Unit = {},
     onBack: () -> Unit = {}
 ) {
     Column(
@@ -133,11 +142,79 @@ fun ProfileScreen(
             AiSettingsContent(settingsUi, onSelectProvider, onEnable, onThresholdChange)
         }
 
+        val enabledCount = settingsUi.mcpServers.count { it.enabled }
+        ExpandableCard(title = "MCP 工具服务器", subtitle = "$enabledCount 台启用 · ${settingsUi.mcpToolCount} 个工具") {
+            McpSettingsContent(settingsUi, onAddMcpServer, onRemoveMcpServer, onToggleMcpServer, onRefreshMcp)
+        }
+
         Text(
-            "答案由 AI 生成，仅供参考。各服务商 Key 分别加密存储于本机。",
+            "答案由 AI 生成，仅供参考。各服务商 Key 分别加密存储于本机。" +
+                "配置 MCP 服务器后，AI 可自主调用其工具（连同读简历/查题库等本地工具）。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun McpSettingsContent(
+    uiState: SettingsUiState,
+    onAdd: (String, String) -> Unit,
+    onRemove: (String) -> Unit,
+    onToggle: (String, Boolean) -> Unit,
+    onRefresh: () -> Unit
+) {
+    Text(
+        "MCP（Model Context Protocol）服务器把外部工具暴露给 AI。填写 Streamable HTTP 端点即可，AI 会在对话/分析时按需调用。",
+        style = MaterialTheme.typography.bodySmall,
+        color = TextSecondary
+    )
+
+    // 已配置的服务器列表
+    uiState.mcpServers.forEach { server ->
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(server.name, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        server.url,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        maxLines = 1
+                    )
+                }
+                Switch(checked = server.enabled, onCheckedChange = { onToggle(server.name, it) })
+                Spacer(Modifier.size(4.dp))
+                TextButton(onClick = { onRemove(server.name) }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+
+    // 新增服务器
+    var name by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    OutlinedTextField(name, { name = it }, label = { Text("服务器名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(url, { url = it }, label = { Text("端点 URL（https://…/mcp）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = {
+                onAdd(name, url)
+                name = ""; url = ""
+            },
+            enabled = name.isNotBlank() && url.isNotBlank()
+        ) { Text("添加") }
+        OutlinedButton(onClick = onRefresh, enabled = !uiState.mcpRefreshing) {
+            Text(if (uiState.mcpRefreshing) "刷新中…" else "重连刷新")
+        }
     }
 }
 

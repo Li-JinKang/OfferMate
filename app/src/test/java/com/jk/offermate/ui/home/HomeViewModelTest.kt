@@ -57,9 +57,13 @@ class HomeViewModelTest {
         override val activeProviderId: Flow<String> = MutableStateFlow(cfg.providerId)
         override val relevanceThreshold: Flow<Int> = MutableStateFlow(70)
         override val activeConfig: Flow<ProviderConfig> = MutableStateFlow(cfg)
+        override val mcpServers: Flow<List<com.jk.offermate.agent.mcp.McpServerConfig>> = MutableStateFlow(emptyList())
         override fun config(providerId: String): Flow<ProviderConfig> = MutableStateFlow(cfg)
         override suspend fun enableProvider(providerId: String, apiKey: String, model: String, baseUrl: String) {}
         override suspend fun updateRelevanceThreshold(value: Int) {}
+        override suspend fun addMcpServer(name: String, url: String, headers: Map<String, String>) {}
+        override suspend fun removeMcpServer(name: String) {}
+        override suspend fun setMcpServerEnabled(name: String, enabled: Boolean) {}
     }
 
     private fun viewModel(
