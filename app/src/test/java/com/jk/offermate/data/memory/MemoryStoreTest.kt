@@ -70,6 +70,16 @@ class MemoryStoreTest {
     }
 
     @Test
+    fun `deleteDetail removes only that file`() = runTest {
+        store.writeDetail("jb", DetailKind.PROJECT, "a", "A")
+        store.writeDetail("jb", DetailKind.PROJECT, "b", "B")
+
+        assertTrue(store.deleteDetail("jb", DetailKind.PROJECT, "a"))
+        assertEquals(listOf("b"), store.listDetails("jb", DetailKind.PROJECT))
+        assertNull(store.readDetail("jb", DetailKind.PROJECT, "a"))
+    }
+
+    @Test
     fun `multiple profiles coexist without interference`() = runTest {
         store.upsertProfile(MemoryProfileEntry("jb", "Java 后端", "Java 后端"))
         store.upsertProfile(MemoryProfileEntry("ad", "Android", "Android"))

@@ -49,6 +49,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.Bitmap
 import com.jk.offermate.agent.ResumeProfile
+import com.jk.offermate.data.memory.DetailKind
 import com.jk.offermate.data.resume.PdfPageRenderer
 import com.jk.offermate.data.settings.AiProvider
 import com.jk.offermate.data.settings.AppSettings
@@ -76,6 +77,13 @@ fun ProfileRoute(container: AppContainer, onBack: () -> Unit = {}) {
     val resumeLoading by resumeViewModel.loading.collectAsStateWithLifecycle()
     val resumeError by resumeViewModel.error.collectAsStateWithLifecycle()
 
+    val memoryViewModel: MemoryViewModel = viewModel(
+        factory = MemoryViewModel.provideFactory(container.memoryStore)
+    )
+    // 简历导入/结构化完成后刷新记忆列表
+    val structuring by resumeViewModel.structuring.collectAsStateWithLifecycle()
+    LaunchedEffect(structuring) { if (!structuring) memoryViewModel.refresh() }
+
     val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(resumeViewModel::onPdfPicked)
     }
@@ -96,7 +104,8 @@ fun ProfileRoute(container: AppContainer, onBack: () -> Unit = {}) {
         onRemoveMcpServer = settingsViewModel::onRemoveMcpServer,
         onToggleMcpServer = settingsViewModel::onToggleMcpServer,
         onRefreshMcp = settingsViewModel::onRefreshMcp,
-        onBack = onBack
+        onBack = onBack,
+        memorySection = { MemorySettingsContent(memoryViewModel) }
     )
 }
 
@@ -117,7 +126,8 @@ fun ProfileScreen(
     onRemoveMcpServer: (String) -> Unit = {},
     onToggleMcpServer: (String, Boolean) -> Unit = { _, _ -> },
     onRefreshMcp: () -> Unit = {},
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    memorySection: @Composable ColumnScope.() -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -142,6 +152,8 @@ fun ProfileScreen(
         ExpandableCard(title = "AI 设置", subtitle = "启用：$activeLabel") {
             AiSettingsContent(settingsUi, onSelectProvider, onEnable, onThresholdChange)
         }
+
+        memorySection()
 
         val enabledCount = settingsUi.mcpServers.count { it.enabled }
         ExpandableCard(title = "MCP 工具服务器", subtitle = "$enabledCount 台启用 · ${settingsUi.mcpToolCount} 个工具") {
@@ -399,4 +411,120 @@ private fun AiSettingsContent(
         valueRange = AppSettings.MIN_THRESHOLD.toFloat()..AppSettings.MAX_THRESHOLD.toFloat(),
         onValueChangeFinished = { onThresholdChange(threshold.toInt()) }
     )
+}
+
+@Composable
+private fun MemorySettingsContent(viewModel: MemoryViewModel) {
+    val profiles by viewModel.profiles.collectAsStateWithLifecycle()
+    val global by viewModel.global.collectAsStateWithLifecycle()
+
+    ExpandableCard(title = "简历记忆", subtitle = "${profiles.size} 份") {
+        Text(
+            "导入简历后，AI 会将其结构化为分层记忆（按求职方向分份），并在分析/对话时按需调用。" +
+                "你可以在此查看、编辑或删除。",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary
+        )
+
+        if (profiles.isEmpty() && global.isBlank()) {
+            Text("暂无记忆，导入简历后自动生成。", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            return@ExpandableCard
+        }
+
+        if (global.isNotBlank()) {
+            EditableFileBlock(
+                label = "通用事实（跨方向共享）",
+                content = global,
+                onSave = viewModel::saveGlobal
+            )
+        }
+
+        profiles.forEach { detail ->
+            MemoryProfileCard(detail, viewModel)
+        }
+    }
+}
+
+@Composable
+private fun MemoryProfileCard(detail: MemoryViewModel.ProfileDetail, viewModel: MemoryViewModel) {
+    val id = detail.entry.id
+    val subtitle = detail.entry.targetRole.ifBlank { "${detail.projects.size + detail.experiences.size} 个文件" }
+    ExpandableCard(title = detail.entry.name.ifBlank { id }, subtitle = subtitle) {
+        if (detail.entry.summary.isNotBlank()) {
+            Text(detail.entry.summary, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        }
+
+        EditableFileBlock(
+            label = "概览（profile.md）",
+            content = detail.overview,
+            onSave = { viewModel.saveOverview(id, it) }
+        )
+
+        detail.projects.forEach { item ->
+            EditableFileBlock(
+                label = "项目：${item.id}",
+                content = item.content,
+                onSave = { viewModel.saveDetail(id, DetailKind.PROJECT, item.id, it) },
+                onDelete = { viewModel.deleteDetail(id, DetailKind.PROJECT, item.id) }
+            )
+        }
+        detail.experiences.forEach { item ->
+            EditableFileBlock(
+                label = "经历：${item.id}",
+                content = item.content,
+                onSave = { viewModel.saveDetail(id, DetailKind.EXPERIENCE, item.id, it) },
+                onDelete = { viewModel.deleteDetail(id, DetailKind.EXPERIENCE, item.id) }
+            )
+        }
+
+        var confirmDelete by remember(id) { mutableStateOf(false) }
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            if (confirmDelete) {
+                TextButton(onClick = { confirmDelete = false }) { Text("取消") }
+                Spacer(Modifier.size(4.dp))
+                Button(onClick = { viewModel.deleteProfile(id) }) {
+                    Text("确认删除整份记忆", color = MaterialTheme.colorScheme.onError)
+                }
+            } else {
+                TextButton(onClick = { confirmDelete = true }) {
+                    Text("删除此记忆集", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+/** 可折叠、可编辑、可选删除的单个记忆文件块。 */
+@Composable
+private fun EditableFileBlock(
+    label: String,
+    content: String,
+    onSave: (String) -> Unit,
+    onDelete: (() -> Unit)? = null
+) {
+    var expanded by rememberSaveable(label) { mutableStateOf(false) }
+    var edited by remember(content) { mutableStateOf(content) }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }
+    ) {
+        Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Text(if (expanded) "收起 ▲" else "展开 ▼", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+    }
+    if (expanded) {
+        OutlinedTextField(
+            value = edited,
+            onValueChange = { edited = it },
+            minLines = 4,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            onDelete?.let {
+                TextButton(onClick = it) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                Spacer(Modifier.size(4.dp))
+            }
+            Button(onClick = { onSave(edited) }, enabled = edited != content) { Text("保存") }
+        }
+    }
 }

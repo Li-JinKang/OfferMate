@@ -129,6 +129,14 @@ class MemoryStore(
         file.writeText(markdown)
     }
 
+    /** 删除某细节文件；文件不存在时静默返回 false。 */
+    suspend fun deleteDetail(profileId: String, kind: DetailKind, itemId: String): Boolean =
+        withContext(io) {
+            requireSafe(profileId)
+            requireSafe(itemId)
+            detailFile(profileId, kind, itemId).delete()
+        }
+
     // ---- 共享事实（global） ----
 
     /** 读取跨方向共享事实 global.md；不存在返回 null。 */
