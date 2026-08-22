@@ -25,6 +25,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jk.offermate.ui.theme.Indigo
@@ -32,6 +33,9 @@ import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextPrimary
 import com.jk.offermate.ui.theme.TextSecondary
 import com.mikepenz.markdown.compose.components.markdownComponents
+import com.mikepenz.markdown.compose.elements.MarkdownTable
+import com.mikepenz.markdown.compose.elements.MarkdownTableHeader
+import com.mikepenz.markdown.compose.elements.MarkdownTableRow
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
@@ -39,6 +43,9 @@ import com.mikepenz.markdown.model.markdownAnimations
 import com.mikepenz.markdown.model.rememberMarkdownState
 
 private val CodeBackground = Color(0xFFF6F7FB)
+
+/** 引用块（blockquote）左侧竖条颜色：天蓝色（库以 quote 文字样式的颜色绘制竖条）。 */
+private val QuoteAccent = Color(0xFF38A2F0)
 
 /**
  * Markdown 渲染。使用 [mikepenz/multiplatform-markdown-renderer](https://github.com/mikepenz/multiplatform-markdown-renderer)
@@ -68,7 +75,28 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
         components = markdownComponents(
             // 注意：it.content 是整篇 Markdown 全文，需用节点偏移切出当前代码块文本
             codeFence = { CodeCard(nodeText(it.content, it.node)) },
-            codeBlock = { CodeCard(nodeText(it.content, it.node)) }
+            codeBlock = { CodeCard(nodeText(it.content, it.node)) },
+            // 表格：库默认单元格 maxLines=1 + 省略号会截断内容。改为**允许换行**（不省略），
+            // 单元格文字完整显示；表格总宽超出可视区时库自带横向滚动生效。
+            table = {
+                MarkdownTable(
+                    content = it.content,
+                    node = it.node,
+                    style = it.typography.table,
+                    headerBlock = { c, h, w, s ->
+                        MarkdownTableHeader(
+                            content = c, header = h, tableWidth = w, style = s,
+                            maxLines = Int.MAX_VALUE, overflow = TextOverflow.Clip
+                        )
+                    },
+                    rowBlock = { c, h, w, s ->
+                        MarkdownTableRow(
+                            content = c, header = h, tableWidth = w, style = s,
+                            maxLines = Int.MAX_VALUE, overflow = TextOverflow.Clip
+                        )
+                    }
+                )
+            }
         )
     )
 }
@@ -90,7 +118,8 @@ private fun chatMarkdownTypography() = markdownTypography(
     ordered = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp),
     bullet = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp),
     list = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp),
-    quote = TextStyle(color = TextSecondary, fontSize = 15.sp, lineHeight = 23.sp),
+    // quote 颜色决定引用块左侧竖条的颜色 —— 从灰色改为天蓝色
+    quote = TextStyle(color = QuoteAccent, fontSize = 15.sp, lineHeight = 23.sp),
     code = TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 20.sp),
     // 行内代码：无底色，靠等宽 + 更小字号（较正文 15sp 小）与正文区分
     inlineCode = TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
