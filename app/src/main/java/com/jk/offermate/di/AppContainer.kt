@@ -15,8 +15,13 @@ import com.jk.offermate.agent.ToolRegistry
 import com.jk.offermate.agent.DeepSeekClient
 import com.jk.offermate.agent.QuestionExtractor
 import com.jk.offermate.agent.RelevanceMatcher
+import com.jk.offermate.agent.ProfileMatcher
+import com.jk.offermate.agent.ResumeStructurer
+import com.jk.offermate.agent.memoryTools
 import com.jk.offermate.agent.mcp.McpToolRepository
 import com.jk.offermate.agent.chat.ContextAssembler
+import com.jk.offermate.data.memory.MemoryStore
+import com.jk.offermate.data.memory.ResumeIngestor
 import com.jk.offermate.agent.chat.FollowUpService
 import com.jk.offermate.agent.chat.HeuristicTokenEstimator
 import com.jk.offermate.agent.chat.TokenWindowMemory
@@ -72,6 +77,12 @@ interface AppContainer {
 
     /** 外部 MCP 服务器工具发现/刷新（其工具会并入共享工具轮）。 */
     val mcpToolRepository: McpToolRepository
+
+    /** 简历记忆分层文件存储（供记忆工具与 UI 读写）。 */
+    val memoryStore: MemoryStore
+
+    /** 简历落地：结构化 + 方向匹配 + 写入记忆文件。 */
+    val resumeIngestor: ResumeIngestor
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -136,6 +147,20 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         McpToolRepository(serversProvider = { settingsRepository.mcpServers.first() })
     }
 
+    // 简历记忆：分层文件存储于 filesDir/memory
+    override val memoryStore: MemoryStore by lazy {
+        MemoryStore(java.io.File(context.filesDir, "memory"))
+    }
+
+    // 简历落地：结构化 + 方向匹配 → 写入记忆文件（只操作记忆系统）
+    override val resumeIngestor: ResumeIngestor by lazy {
+        ResumeIngestor(
+            structurer = ResumeStructurer(aiClient),
+            matcher = ProfileMatcher(aiClient),
+            store = memoryStore
+        )
+    }
+
     // 本地工具：让模型自主取数——读简历、查题库、列分类（首屏只带最小画像，按需拉取）
     private val localTools: List<Tool> by lazy {
         listOf(
@@ -148,9 +173,10 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         )
     }
 
-    // 共享工具注册表：本地工具 + 已发现的 MCP 工具（provider 按需求值，MCP 刷新后自动生效）
+    // 共享工具注册表：本地工具 + 分级记忆工具 + 已发现的 MCP 工具
+    // （provider 按需求值：MCP 刷新、记忆文件更新后自动生效）
     private val sharedToolRegistry: ToolRegistry by lazy {
-        ToolRegistry { localTools + mcpToolRepository.current() }
+        ToolRegistry { localTools + memoryTools(memoryStore) + mcpToolRepository.current() }
     }
 
     override val analysisPipeline: AnalysisPipeline by lazy {

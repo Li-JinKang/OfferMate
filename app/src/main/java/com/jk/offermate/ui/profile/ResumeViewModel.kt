@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jk.offermate.agent.ResumeProfile
+import com.jk.offermate.data.memory.ResumeIngestor
 import com.jk.offermate.data.resume.ResumeFileStore
 import com.jk.offermate.data.resume.ResumeRepository
 import com.jk.offermate.data.resume.ResumeTextExtractor
@@ -23,7 +24,8 @@ import kotlinx.coroutines.launch
 class ResumeViewModel(
     private val repository: ResumeRepository,
     private val extractor: ResumeTextExtractor,
-    private val fileStore: ResumeFileStore
+    private val fileStore: ResumeFileStore,
+    private val resumeIngestor: ResumeIngestor
 ) : ViewModel() {
 
     val profile: StateFlow<ResumeProfile> = repository.profile.stateIn(
@@ -44,6 +46,10 @@ class ResumeViewModel(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    /** 简历结构化落地为记忆的进行状态（独立于导入本身）。 */
+    private val _structuring = MutableStateFlow(false)
+    val structuring: StateFlow<Boolean> = _structuring.asStateFlow()
+
     fun onPdfPicked(uri: Uri) {
         viewModelScope.launch {
             _loading.value = true
@@ -53,6 +59,7 @@ class ResumeViewModel(
                 repository.setFilePath(path)
                 val text = extractor.extractText(uri)
                 repository.updateRawText(text)
+                ingestToMemory(text)
             } catch (e: Exception) {
                 _error.value = e.message ?: "简历解析失败，请重试"
             } finally {
@@ -61,9 +68,28 @@ class ResumeViewModel(
         }
     }
 
-    /** 用户编辑识别文本后手动保存。 */
+    /** 用户编辑识别文本后手动保存；同时刷新记忆。 */
     fun saveRawText(text: String) {
-        viewModelScope.launch { repository.updateRawText(text) }
+        viewModelScope.launch {
+            repository.updateRawText(text)
+            ingestToMemory(text)
+        }
+    }
+
+    /**
+     * 把简历文本结构化落地为分层文件记忆。best-effort：需要 AI（BYOK），
+     * 失败不影响简历导入本身（例如未配置 Key），仅静默跳过。
+     */
+    private suspend fun ingestToMemory(text: String) {
+        if (text.isBlank()) return
+        _structuring.value = true
+        try {
+            resumeIngestor.ingest(text)
+        } catch (_: Exception) {
+            // 记忆结构化失败不阻断简历导入（如无 Key / 网络问题），留待下次保存重试
+        } finally {
+            _structuring.value = false
+        }
     }
 
     fun consumeError() { _error.value = null }
@@ -72,9 +98,10 @@ class ResumeViewModel(
         fun provideFactory(
             repository: ResumeRepository,
             extractor: ResumeTextExtractor,
-            fileStore: ResumeFileStore
+            fileStore: ResumeFileStore,
+            resumeIngestor: ResumeIngestor
         ) = viewModelFactory {
-            initializer { ResumeViewModel(repository, extractor, fileStore) }
+            initializer { ResumeViewModel(repository, extractor, fileStore, resumeIngestor) }
         }
     }
 }

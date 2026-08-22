@@ -66,7 +66,8 @@ fun ProfileRoute(container: AppContainer, onBack: () -> Unit = {}) {
         factory = ResumeViewModel.provideFactory(
             container.resumeRepository,
             container.resumeTextExtractor,
-            container.resumeFileStore
+            container.resumeFileStore,
+            container.resumeIngestor
         )
     )
     val settingsUi by settingsViewModel.uiState.collectAsStateWithLifecycle()
