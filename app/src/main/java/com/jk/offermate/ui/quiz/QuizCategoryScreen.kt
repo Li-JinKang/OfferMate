@@ -194,9 +194,29 @@ fun QuizCategoryScreen(
         val selectMode = { m: CategoryActionMode -> mode = if (mode == m) CategoryActionMode.None else m }
         FloatingActionBar(
             items = listOf(
-                ActionBarItemSpec(Icons.AutoMirrored.Filled.ArrowBack, "返回", false, MaterialTheme.colorScheme.primary, onClick = onBack),
-                ActionBarItemSpec(Icons.Filled.Delete, "删除", mode == CategoryActionMode.Delete, ActionDeleteColor) { selectMode(CategoryActionMode.Delete) },
-                ActionBarItemSpec(Icons.Filled.Check, "已刷", mode == CategoryActionMode.Practice, ActionPracticeColor) { selectMode(CategoryActionMode.Practice) },
+                ActionBarItemSpec(
+                    icon = null,
+                    label = "返回",
+                    selected = false,
+                    activeColor = MaterialTheme.colorScheme.primary,
+                    iconRes = R.drawable.ic_reply_back,
+                    onClick = onBack
+                ),
+                ActionBarItemSpec(
+                    icon = null,
+                    label = "删除",
+                    selected = mode == CategoryActionMode.Delete,
+                    activeColor = ActionDeleteColor,
+                    iconRes = R.drawable.ic_delete_bin,
+                    coloredIcon = true
+                ) { selectMode(CategoryActionMode.Delete) },
+                ActionBarItemSpec(
+                    icon = null,
+                    label = "已刷",
+                    selected = mode == CategoryActionMode.Practice,
+                    activeColor = ActionPracticeColor,
+                    iconRes = R.drawable.ic_check
+                ) { selectMode(CategoryActionMode.Practice) },
                 ActionBarItemSpec(
                     icon = null,
                     label = "移动",

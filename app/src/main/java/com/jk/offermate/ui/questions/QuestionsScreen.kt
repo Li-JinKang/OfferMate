@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.jk.offermate.R
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.ActionBarItemSpec
@@ -140,9 +141,29 @@ fun QuestionsScreen(
         val selectMode = { m: QuestionActionMode -> mode = if (mode == m) QuestionActionMode.None else m }
         FloatingActionBar(
             items = listOf(
-                ActionBarItemSpec(Icons.AutoMirrored.Filled.ArrowBack, "返回", false, MaterialTheme.colorScheme.primary, onClick = onBack),
-                ActionBarItemSpec(Icons.Filled.Delete, "删除", mode == QuestionActionMode.Delete, ActionDeleteColor) { selectMode(QuestionActionMode.Delete) },
-                ActionBarItemSpec(Icons.Filled.Check, "已刷", mode == QuestionActionMode.Practice, ActionPracticeColor) { selectMode(QuestionActionMode.Practice) },
+                ActionBarItemSpec(
+                    icon = null,
+                    label = "返回",
+                    selected = false,
+                    activeColor = MaterialTheme.colorScheme.primary,
+                    iconRes = R.drawable.ic_reply_back,
+                    onClick = onBack
+                ),
+                ActionBarItemSpec(
+                    icon = null,
+                    label = "删除",
+                    selected = mode == QuestionActionMode.Delete,
+                    activeColor = ActionDeleteColor,
+                    iconRes = R.drawable.ic_delete_bin,
+                    coloredIcon = true
+                ) { selectMode(QuestionActionMode.Delete) },
+                ActionBarItemSpec(
+                    icon = null,
+                    label = "已刷",
+                    selected = mode == QuestionActionMode.Practice,
+                    activeColor = ActionPracticeColor,
+                    iconRes = R.drawable.ic_check
+                ) { selectMode(QuestionActionMode.Practice) },
                 ActionBarItemSpec(Icons.Filled.Email, "追问", mode == QuestionActionMode.FollowUp, Indigo) { selectMode(QuestionActionMode.FollowUp) }
             ),
             modifier = Modifier

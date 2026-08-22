@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 删除图标：蓝色渐变垃圾桶（桶盖 + 提手 + 桶身两条白色竖槽）。
+     多色/渐变图标，渲染时不要着色（tint = Unspecified）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- 提手（∩ 形带状，中间镂空） -->
+    <path android:pathData="M195,122 L195,100 Q195,72 223,72 L285,72 Q313,72 313,100 L313,122 L288,122 L288,106 Q288,96 279,96 L229,96 Q220,96 220,106 L220,122 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear"
+                android:startX="256" android:startY="72"
+                android:endX="256" android:endY="432"
+                android:startColor="#28C4F5" android:endColor="#2E82E2" />
+        </aapt:attr>
+    </path>
+
+    <!-- 桶盖：横向圆角条 -->
+    <path android:pathData="M117,120 L395,120 Q417,120 417,142 L417,146 Q417,168 395,168 L117,168 Q95,168 95,146 L95,142 Q95,120 117,120 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear"
+                android:startX="256" android:startY="72"
+                android:endX="256" android:endY="432"
+                android:startColor="#28C4F5" android:endColor="#2E82E2" />
+        </aapt:attr>
+    </path>
+
+    <!-- 桶身：向下收窄的梯形 -->
+    <path android:pathData="M138,188 L378,188 Q392,188 390,206 L356,412 Q353,432 333,432 L183,432 Q163,432 160,412 L126,206 Q124,188 138,188 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear"
+                android:startX="256" android:startY="72"
+                android:endX="256" android:endY="432"
+                android:startColor="#28C4F5" android:endColor="#2E82E2" />
+        </aapt:attr>
+    </path>
+
+    <!-- 两条白色竖槽 -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M223,240 Q236,240 236,253 L236,375 Q236,388 223,388 Q210,388 210,375 L210,253 Q210,240 223,240 Z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M293,240 Q306,240 306,253 L306,375 Q306,388 293,388 Q280,388 280,375 L280,253 Q280,240 293,240 Z" />
+</vector>
