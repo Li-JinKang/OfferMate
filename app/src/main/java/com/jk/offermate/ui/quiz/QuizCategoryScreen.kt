@@ -200,6 +200,7 @@ fun QuizCategoryScreen(
                     selected = false,
                     activeColor = MaterialTheme.colorScheme.primary,
                     iconRes = R.drawable.ic_reply_back,
+                    coloredIcon = true,
                     onClick = onBack
                 ),
                 ActionBarItemSpec(
@@ -215,7 +216,8 @@ fun QuizCategoryScreen(
                     label = "已刷",
                     selected = mode == CategoryActionMode.Practice,
                     activeColor = ActionPracticeColor,
-                    iconRes = R.drawable.ic_check
+                    iconRes = R.drawable.ic_check,
+                    coloredIcon = true
                 ) { selectMode(CategoryActionMode.Practice) },
                 ActionBarItemSpec(
                     icon = null,

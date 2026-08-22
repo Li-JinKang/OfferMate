@@ -19,8 +19,8 @@ sealed class Screen(
     @param:DrawableRes val iconRes: Int? = null,
     val coloredIcon: Boolean = false
 ) {
-    data object Home : Screen("home", "主页", iconRes = R.drawable.ic_check)
-    data object Quiz : Screen("quiz", "题库", iconRes = R.drawable.ic_reply_back)
+    data object Home : Screen("home", "主页", iconRes = R.drawable.ic_home_circle, coloredIcon = true)
+    data object Quiz : Screen("quiz", "题库", iconRes = R.drawable.ic_category_grid, coloredIcon = true)
     data object AiChat : Screen("aichat", "AI对话", iconRes = R.drawable.ic_ai_chat, coloredIcon = true)
 
     /** 设置页（原“我的”）：不再是 Tab，作为独立页面从 AI 对话页进入。 */

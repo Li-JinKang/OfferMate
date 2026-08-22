@@ -147,6 +147,7 @@ fun QuestionsScreen(
                     selected = false,
                     activeColor = MaterialTheme.colorScheme.primary,
                     iconRes = R.drawable.ic_reply_back,
+                    coloredIcon = true,
                     onClick = onBack
                 ),
                 ActionBarItemSpec(
@@ -162,9 +163,17 @@ fun QuestionsScreen(
                     label = "已刷",
                     selected = mode == QuestionActionMode.Practice,
                     activeColor = ActionPracticeColor,
-                    iconRes = R.drawable.ic_check
+                    iconRes = R.drawable.ic_check,
+                    coloredIcon = true
                 ) { selectMode(QuestionActionMode.Practice) },
-                ActionBarItemSpec(Icons.Filled.Email, "追问", mode == QuestionActionMode.FollowUp, Indigo) { selectMode(QuestionActionMode.FollowUp) }
+                ActionBarItemSpec(
+                    icon = null,
+                    label = "追问",
+                    selected = mode == QuestionActionMode.FollowUp,
+                    activeColor = Indigo,
+                    iconRes = R.drawable.ic_ai_chat,
+                    coloredIcon = true
+                ) { selectMode(QuestionActionMode.FollowUp) }
             ),
             modifier = Modifier
                 .align(Alignment.BottomCenter)

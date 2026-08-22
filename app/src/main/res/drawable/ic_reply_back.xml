@@ -1,25 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 返回/回复箭头：实心左向箭头带下弯的钩尾。三角箭头较小、弯曲箭杆向右延伸。单色图标，可随状态着色。 -->
+<!-- 返回/回复箭头：左向实心箭头 + 向右下弯曲的钩尾。
+     基于原始 SVG(viewBox 1024)，三角箭头略缩小、弯曲箭杆向右延伸。单色图标，可随状态着色。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="512"
-    android:viewportHeight="512">
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
     <path
         android:fillColor="#38A2F0"
         android:pathData="
-            M58,256
-            L250,120
-            Q262,112 262,136
-            L260,160
-            C345,160 460,100 495,215
-            C513,330 476,438 388,492
-            C376,501 372,486 382,476
-            C432,436 440,360 388,326
-            C360,310 300,310 260,310
-            L262,392
-            Q262,416 244,402
-            L58,262
-            Q50,259 58,256
+            M400,400
+            L400,280
+            L190,512
+            L400,744
+            L400,624
+            C620,624 790,690 930,845
+            C888,640 760,430 400,400
             Z" />
 </vector>
