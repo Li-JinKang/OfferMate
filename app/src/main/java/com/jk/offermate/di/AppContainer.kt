@@ -8,7 +8,6 @@ import com.jk.offermate.agent.AnswerGenerator
 import com.jk.offermate.agent.CategoryClassifier
 import com.jk.offermate.agent.CategoryListTool
 import com.jk.offermate.agent.QuestionSearchTool
-import com.jk.offermate.agent.ResumeReaderTool
 import com.jk.offermate.agent.Tool
 import com.jk.offermate.agent.ToolCallingLlm
 import com.jk.offermate.agent.ToolRegistry
@@ -161,10 +160,9 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         )
     }
 
-    // 本地工具：让模型自主取数——读简历、查题库、列分类（首屏只带最小画像，按需拉取）
+    // 本地工具：让模型自主取数——查题库、列分类（简历背景走分级记忆工具，按需拉取）
     private val localTools: List<Tool> by lazy {
         listOf(
-            ResumeReaderTool(resumeTextProvider = { resumeRepository.profile.first().rawText }),
             QuestionSearchTool(search = { q, limit -> questionRepository.search(q, limit).first() }),
             CategoryListTool(categoriesProvider = {
                 categoryRepository.observeCategories().first() +

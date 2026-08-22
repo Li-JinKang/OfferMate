@@ -2,7 +2,6 @@ package com.jk.offermate.agent.chat
 
 import com.jk.offermate.agent.AiClient
 import com.jk.offermate.agent.ChatMessage
-import com.jk.offermate.agent.ResumeProfile
 import com.jk.offermate.agent.Role
 import com.jk.offermate.agent.ToolCallingAgent
 import com.jk.offermate.agent.ToolCallingLlm
@@ -37,14 +36,14 @@ class FollowUpService(
      * 对话 system 上下文。[context] 为空时是**自由对话**（不绑定题目）；非空时附带该题与当前答案。
      * 两种情况都会带上候选人画像；简历细节按需用工具拉取。
      */
-    fun systemContext(context: QuestionContext?, profile: ResumeProfile): String = buildString {
+    fun systemContext(context: QuestionContext?): String = buildString {
         if (context == null) {
             append("你是一名资深面试辅导老师，正在与候选人进行面试相关的自由问答与讨论。\n")
-            append("请结合候选人的简历画像，针对其问题给出准确、有条理的解答。\n")
+            append("请针对其问题给出准确、有条理的解答。\n")
             append("使用 Markdown、分点作答，关键术语用 **加粗**，代码/类名用 `反引号`。\n")
         } else {
             append("你是一名资深面试辅导老师，正在就下面这道面试题与候选人进行**追问讨论**。\n")
-            append("请结合候选人的简历画像与已有参考答案，针对其追问给出准确、有条理的解答。\n")
+            append("请结合已有参考答案，针对其追问给出准确、有条理的解答。\n")
             append("使用 Markdown、分点作答，关键术语用 **加粗**，代码/类名用 `反引号`。\n\n")
             append("【题目】\n").append(context.question).append("\n")
             if (context.tags.isNotEmpty()) {
@@ -54,42 +53,37 @@ class FollowUpService(
                 append("\n【当前参考答案】\n").append(context.currentAnswer).append("\n")
             }
         }
-        append("\n【候选人画像】\n")
-        append("目标岗位：").append(profile.targetRole.ifBlank { "未填写" }).append("\n")
-        if (profile.skills.isNotEmpty()) append("技能：").append(profile.skills.joinToString("、")).append("\n")
-        if (profile.projects.isNotEmpty()) append("项目：").append(profile.projects.joinToString("、")).append("\n")
         if (toolsEnabled) {
-            append("\n如需候选人简历的更多细节（技术栈、项目经历等），调用 read_resume 工具获取，可传 query 关键词。\n")
+            append("\n如需结合候选人的简历背景（求职方向、技能、项目经历）作答，按需分级调用工具：\n")
+            append("先 list_memory_profiles 查看有哪些方向记忆并选相关的一份，")
+            append("再 load_profile_overview 看概览，必要时 load_project_detail / load_experience_detail 下钻。\n")
         }
     }
 
     /** 组装本轮要发送给模型的完整消息（history 应已包含最新的用户输入）。 */
     fun buildMessages(
         context: QuestionContext?,
-        profile: ResumeProfile,
         history: List<ChatMessage>
     ): List<ChatMessage> = assembler.assemble(
-        systemContents = listOf(systemContext(context, profile)),
+        systemContents = listOf(systemContext(context)),
         history = history
     )
 
     /** 针对用户的输入生成一轮回答（history 含最新用户消息）。[context] 为空即自由对话。 */
     suspend fun reply(
         context: QuestionContext?,
-        profile: ResumeProfile,
         history: List<ChatMessage>
-    ): String = runTurn(buildMessages(context, profile, history)).trim()
+    ): String = runTurn(buildMessages(context, history)).trim()
 
     /**
      * 综合整段讨论，产出这道题**更新后的完整参考答案**（Markdown、分点，只含答案正文）。
      */
     suspend fun reviseAnswer(
         context: QuestionContext,
-        profile: ResumeProfile,
         history: List<ChatMessage>
     ): String {
         val messages = assembler.assemble(
-            systemContents = listOf(systemContext(context, profile), REVISE_INSTRUCTION),
+            systemContents = listOf(systemContext(context), REVISE_INSTRUCTION),
             history = history
         )
         return stripCodeFence(runTurn(messages).trim())
@@ -120,7 +114,7 @@ class FollowUpService(
             .trim('"', '\'', '「', '」', '“', '”', '《', '》', '.', '。', '：', ':')
             .take(15)
 
-    /** 有工具则走 agent 工具轮（模型可按需 read_resume），否则退回普通补全。 */
+    /** 有工具则走 agent 工具轮（模型可按需调用记忆工具），否则退回普通补全。 */
     private suspend fun runTurn(messages: List<ChatMessage>): String =
         if (toolsEnabled) {
             ToolCallingAgent(toolCallingLlm!!, toolRegistry, maxSteps).run(messages)

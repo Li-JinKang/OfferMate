@@ -231,8 +231,7 @@ private fun AiChatConversation(
             questionId = questionId,
             questionRepository = container.questionRepository,
             conversationRepository = container.conversationRepository,
-            followUpService = container.followUpService,
-            resumeRepository = container.resumeRepository
+            followUpService = container.followUpService
         )
     )
     val question by viewModel.question.collectAsStateWithLifecycle()

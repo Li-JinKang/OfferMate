@@ -1,10 +1,13 @@
 package com.jk.offermate.agent
 
+import com.jk.offermate.data.memory.MemoryProfileEntry
+import com.jk.offermate.data.memory.MemoryStore
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.file.Files
 
 class AnswerGeneratorTest {
 
@@ -12,8 +15,6 @@ class AnswerGeneratorTest {
         requireNotNull(javaClass.getResourceAsStream("/fixtures/llm/$name")) {
             "缺少测试夹具: $name"
         }.bufferedReader().use { it.readText() }
-
-    private val profile = ResumeProfile(targetRole = "Android 开发", skills = listOf("Android"))
 
     private val relevant = listOf(
         RelevanceResult(
@@ -27,25 +28,27 @@ class AnswerGeneratorTest {
     )
 
     @Test
-    fun `answer uses read_resume tool when enabled`() = runTest {
+    fun `answer uses memory tools when enabled`() = runTest {
+        val store = MemoryStore(Files.createTempDirectory("agt").toFile())
+        store.upsertProfile(MemoryProfileEntry("android", "Android", "Android 开发"))
         val answers = """{"answers":[{"index":0,"answer":"分点答案","difficulty":"medium","keyPoints":["k"]}]}"""
         val llm = FakeToolCallingLlm(
             listOf(
-                LlmTurn.ToolInvocations(listOf(ToolCall("c1", "read_resume", "{}"))),
+                LlmTurn.ToolInvocations(listOf(ToolCall("c1", "list_memory_profiles", "{}"))),
                 LlmTurn.Final(answers)
             )
         )
         val generator = AnswerGenerator(
             aiClient = FakeAiClient.returning("不应走到普通补全"),
             toolCallingLlm = llm,
-            toolRegistry = ToolRegistry(listOf(ResumeReaderTool(resumeTextProvider = { "技能：Android" })))
+            toolRegistry = ToolRegistry(memoryTools(store))
         )
 
-        val answered = generator.answer(listOf(relevant[0]), profile)
+        val answered = generator.answer(listOf(relevant[0]))
 
         assertEquals(1, answered.size)
         assertEquals("分点答案", answered[0].answer)
-        assertTrue(llm.received.first().first.any { it.content.contains("read_resume") })
+        assertTrue(llm.received.first().first.any { it.content.contains("list_memory_profiles") })
         assertTrue(llm.received[1].first.any { it.role == Role.TOOL })
     }
 
@@ -53,7 +56,7 @@ class AnswerGeneratorTest {
     fun `generates answers mapped back with difficulty and carried relevance`() = runTest {
         val generator = AnswerGenerator(FakeAiClient.returning(loadFixture("answer_response.json")))
 
-        val answered = generator.answer(relevant, profile)
+        val answered = generator.answer(relevant)
 
         assertEquals(2, answered.size)
         assertTrue(answered[0].question.contains("Activity"))
@@ -71,7 +74,7 @@ class AnswerGeneratorTest {
     fun `empty input returns empty without calling model`() = runTest {
         val generator = AnswerGenerator(FakeAiClient.returning("should-not-be-used"))
 
-        assertTrue(generator.answer(emptyList(), profile).isEmpty())
+        assertTrue(generator.answer(emptyList()).isEmpty())
     }
 
     @Test

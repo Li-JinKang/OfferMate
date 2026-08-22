@@ -1,10 +1,13 @@
 package com.jk.offermate.agent
 
+import com.jk.offermate.data.memory.MemoryProfileEntry
+import com.jk.offermate.data.memory.MemoryStore
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.file.Files
 
 class RelevanceMatcherTest {
 
@@ -19,42 +22,37 @@ class RelevanceMatcherTest {
         ExtractedQuestion("手写一个 LRU 缓存，要求 get 和 put 都是 O(1) 时间复杂度。", listOf("算法", "数据结构"))
     )
 
-    private val profile = ResumeProfile(
-        targetRole = "Android 开发",
-        skills = listOf("Android", "Kotlin", "JVM"),
-        yearsOfExperience = 3,
-        projects = listOf("即时通讯 App")
-    )
-
     @Test
-    fun `match uses read_resume tool when enabled`() = runTest {
+    fun `match uses memory tools when enabled`() = runTest {
+        val store = MemoryStore(Files.createTempDirectory("rmt").toFile())
+        store.upsertProfile(MemoryProfileEntry("android", "Android", "Android 开发", "3 年"))
         val results = """{"results":[{"index":0,"score":90,"reason":"相关","matchedSkills":["Android"]}]}"""
         val llm = FakeToolCallingLlm(
             listOf(
-                LlmTurn.ToolInvocations(listOf(ToolCall("c1", "read_resume", "{}"))),
+                LlmTurn.ToolInvocations(listOf(ToolCall("c1", "list_memory_profiles", "{}"))),
                 LlmTurn.Final(results)
             )
         )
         val matcher = RelevanceMatcher(
             aiClient = FakeAiClient.returning("不应走到普通补全"),
             toolCallingLlm = llm,
-            toolRegistry = ToolRegistry(listOf(ResumeReaderTool(resumeTextProvider = { "技能：Android、Kotlin" })))
+            toolRegistry = ToolRegistry(memoryTools(store))
         )
 
-        val out = matcher.match(listOf(threeQuestions[0]), profile, threshold = 60)
+        val out = matcher.match(listOf(threeQuestions[0]), threshold = 60)
 
         assertEquals(1, out.size)
         assertEquals(90, out[0].score)
-        // 首屏提示可用 read_resume，且第二轮带回 TOOL 结果
-        assertTrue(llm.received.first().first.any { it.content.contains("read_resume") })
-        assertTrue(llm.received[1].first.any { it.role == Role.TOOL })
+        // 首屏提示可用记忆工具，且第二轮带回 TOOL 结果
+        assertTrue(llm.received.first().first.any { it.content.contains("list_memory_profiles") })
+        assertTrue(llm.received[1].first.any { it.role == Role.TOOL && it.content.contains("android") })
     }
 
     @Test
     fun `filters by threshold and sorts by score desc`() = runTest {
         val matcher = RelevanceMatcher(FakeAiClient.returning(loadFixture("relevance_response.json")))
 
-        val results = matcher.match(threeQuestions, profile, threshold = 60)
+        val results = matcher.match(threeQuestions, threshold = 60)
 
         assertEquals(2, results.size)
         assertEquals(95, results[0].score)
@@ -67,7 +65,7 @@ class RelevanceMatcherTest {
     fun `custom threshold keeps only top matches`() = runTest {
         val matcher = RelevanceMatcher(FakeAiClient.returning(loadFixture("relevance_response.json")))
 
-        val results = matcher.match(threeQuestions, profile, threshold = 90)
+        val results = matcher.match(threeQuestions, threshold = 90)
 
         assertEquals(1, results.size)
         assertEquals(95, results[0].score)
@@ -88,7 +86,7 @@ class RelevanceMatcherTest {
     fun `empty questions returns empty without calling model`() = runTest {
         val matcher = RelevanceMatcher(FakeAiClient.returning("should-not-be-used"))
 
-        val results = matcher.match(emptyList(), profile)
+        val results = matcher.match(emptyList())
 
         assertTrue(results.isEmpty())
     }
@@ -103,14 +101,14 @@ class RelevanceMatcherTest {
     }
 
     @Test
-    fun `buildMessages injects profile and indexed questions`() {
+    fun `buildMessages guides memory tools and lists indexed questions`() {
         val matcher = RelevanceMatcher(FakeAiClient.returning(""))
 
-        val messages = matcher.buildMessages(threeQuestions, profile)
+        val messages = matcher.buildMessages(threeQuestions)
 
         assertTrue(messages.first().content.contains("JSON"))
+        assertTrue(messages.first().content.contains("list_memory_profiles"))
         val userContent = messages.last().content
-        assertTrue(userContent.contains("Android 开发"))
         assertTrue(userContent.contains("0. 说一下 Activity"))
         assertTrue(userContent.contains("1. Handler"))
     }

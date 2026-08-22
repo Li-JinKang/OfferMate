@@ -20,10 +20,7 @@ class AnswerGenerator(
     private val toolsEnabled: Boolean
         get() = toolCallingLlm != null && !toolRegistry.isEmpty()
 
-    fun buildMessages(
-        relevant: List<RelevanceResult>,
-        profile: ResumeProfile
-    ): List<ChatMessage> {
+    fun buildMessages(relevant: List<RelevanceResult>): List<ChatMessage> {
         val questionsBlock = relevant
             .mapIndexed { index, r -> "$index. ${r.question.question}" }
             .joinToString("\n")
@@ -32,10 +29,14 @@ class AnswerGenerator(
             ChatMessage(
                 role = Role.SYSTEM,
                 content = """
-                    你是一名资深面试辅导老师。请结合候选人的简历画像，为每道题给出**参考答案**、
-                    难度评级与关键要点，可适当结合其项目经历给出作答建议。
+                    你是一名资深面试辅导老师。请为每道题给出**参考答案**、难度评级与关键要点，
+                    并尽量结合候选人的真实项目经历给出作答建议。
+                    获取候选人背景的方式（按需分级调用工具，不要臆造）：
+                    1. 先 list_memory_profiles 查看有哪些求职方向记忆，选择与题目最相关的一份。
+                    2. load_profile_overview(profileId) 加载该方向的技能与项目/经历概览。
+                    3. 需要具体项目/经历时再 load_project_detail / load_experience_detail 下钻。
                     严格要求：
-                    1. 仅输出 JSON，不要输出任何解释或额外文字。
+                    1. 最终仅输出 JSON，不要输出任何解释或额外文字。
                     2. 结构为：{"answers":[{"index":题目序号,"answer":"参考答案","difficulty":"easy|medium|hard","keyPoints":["要点"]}]}。
                     3. index 必须与输入题目的序号一一对应。
                     4. answer 字段使用 **Markdown** 且**分点作答**：用有序列表(1. 2. 3.)或无序列表(- )组织要点，
@@ -47,39 +48,20 @@ class AnswerGenerator(
             ChatMessage(
                 role = Role.USER,
                 content = buildString {
-                    append("候选人简历画像：\n")
-                    if (profile.targetRole.isNotBlank()) append("目标岗位：${profile.targetRole}\n")
-                    if (profile.skills.isNotEmpty()) append("技能：${profile.skills.joinToString("、")}\n")
-                    if (profile.projects.isNotEmpty()) append("项目：${profile.projects.joinToString("、")}\n")
-                    if (toolsEnabled) {
-                        // 首屏最小画像：需要结合候选人经历时，让模型调用 read_resume 拉取
-                        append("如需结合候选人简历经历作答，调用 read_resume 工具（可传 query 关键词）。\n")
-                    } else if (profile.rawText.isNotBlank()) {
-                        append("简历内容（可据此结合候选人经历作答）：\n")
-                        append(profile.rawText.take(RESUME_CHAR_LIMIT))
-                        append("\n")
-                    }
-                    append("\n待作答题目：\n")
+                    append("待作答题目：\n")
                     append(questionsBlock)
                 }
             )
         )
     }
 
-    private companion object {
-        const val RESUME_CHAR_LIMIT = 2000
-    }
-
-    suspend fun answer(
-        relevant: List<RelevanceResult>,
-        profile: ResumeProfile
-    ): List<AnsweredQuestion> {
+    suspend fun answer(relevant: List<RelevanceResult>): List<AnsweredQuestion> {
         if (relevant.isEmpty()) return emptyList()
-        val raw = runTurn(buildMessages(relevant, profile))
+        val raw = runTurn(buildMessages(relevant))
         return parse(raw, relevant)
     }
 
-    /** 有工具则走 agent 工具轮（模型可按需 read_resume），否则退回普通补全。 */
+    /** 有工具则走 agent 工具轮（模型可按需调用记忆工具），否则退回普通补全。 */
     private suspend fun runTurn(messages: List<ChatMessage>): String =
         if (toolsEnabled) {
             ToolCallingAgent(toolCallingLlm!!, toolRegistry, maxSteps).run(messages)

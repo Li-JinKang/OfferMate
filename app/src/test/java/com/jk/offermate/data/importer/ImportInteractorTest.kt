@@ -7,7 +7,6 @@ import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.FakeAiClient
 import com.jk.offermate.agent.QuestionExtractor
 import com.jk.offermate.agent.RelevanceMatcher
-import com.jk.offermate.agent.ResumeProfile
 import com.jk.offermate.data.reader.ContentReader
 import com.jk.offermate.data.reader.DynamicContentReader
 import com.jk.offermate.data.reader.HtmlContentExtractor
@@ -26,8 +25,6 @@ class ImportInteractorTest {
 
     private fun loadHtml(name: String): String =
         requireNotNull(javaClass.getResourceAsStream("/fixtures/html/$name")).bufferedReader().use { it.readText() }
-
-    private val profile = ResumeProfile(targetRole = "Android 开发", skills = listOf("Android"))
 
     private class FakeResolver(private val out: String) : UrlResolver {
         override fun resolve(url: String): String = out
@@ -58,7 +55,7 @@ class ImportInteractorTest {
     fun `importFromUrl reads and analyzes into answered questions`() = runTest {
         val interactor = ImportInteractor(reader(loadHtml("nowcoder_sample.html")), realPipeline())
 
-        val result = interactor.importFromUrl("https://www.nowcoder.com/share/jump/x", profile)
+        val result = interactor.importFromUrl("https://www.nowcoder.com/share/jump/x")
 
         assertTrue(result is ImportResult.Success)
         val success = result as ImportResult.Success
@@ -79,7 +76,7 @@ class ImportInteractorTest {
         }
         val interactor = ImportInteractor(reader(html), realPipeline(), fakeOcr, fakeFetcher)
 
-        val result = interactor.importFromUrl("https://www.nowcoder.com/share/jump/x", profile)
+        val result = interactor.importFromUrl("https://www.nowcoder.com/share/jump/x")
 
         assertTrue(result is ImportResult.Success)
         val content = (result as ImportResult.Success).content
@@ -92,7 +89,7 @@ class ImportInteractorTest {
     fun `importFromUrl returns NeedsManualInput when read fails`() = runTest {
         val interactor = ImportInteractor(reader(html = null, dynamic = null), realPipeline())
 
-        val result = interactor.importFromUrl("https://xhslink.cn/o/x", profile)
+        val result = interactor.importFromUrl("https://xhslink.cn/o/x")
 
         assertTrue(result is ImportResult.NeedsManualInput)
     }
@@ -101,7 +98,7 @@ class ImportInteractorTest {
     fun `importFromText analyzes pasted content`() = runTest {
         val interactor = ImportInteractor(reader(html = null), realPipeline())
 
-        val result = interactor.importFromText("一段用户粘贴的面经正文", profile)
+        val result = interactor.importFromText("一段用户粘贴的面经正文")
 
         assertTrue(result is ImportResult.Success)
         assertEquals(2, (result as ImportResult.Success).questions.size)
@@ -116,7 +113,7 @@ class ImportInteractorTest {
         )
         val interactor = ImportInteractor(reader(html = null), throwingPipeline)
 
-        val result = interactor.importFromText("正文", profile)
+        val result = interactor.importFromText("正文")
 
         assertTrue(result is ImportResult.Failed)
     }

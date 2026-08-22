@@ -7,8 +7,9 @@ package com.jk.offermate.agent
  */
 interface PostAnalyzer {
     /**
-     * 分析一段面经正文，产出与简历相关且已作答的题目。
+     * 分析一段面经正文，产出与候选人相关且已作答的题目。
+     * 候选人背景由各步骤按需经记忆工具拉取，不再由调用方传入。
      * @return 无题目或无相关题目时返回空列表。
      */
-    suspend fun analyze(postText: String, profile: ResumeProfile): List<AnsweredQuestion>
+    suspend fun analyze(postText: String): List<AnsweredQuestion>
 }

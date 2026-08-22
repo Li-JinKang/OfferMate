@@ -12,11 +12,6 @@ class AnalysisPipelineTest {
             "缺少测试夹具: $name"
         }.bufferedReader().use { it.readText() }
 
-    private val profile = ResumeProfile(
-        targetRole = "Android 开发",
-        skills = listOf("Android", "Kotlin")
-    )
-
     private fun pipeline(
         extractResponse: String,
         relevanceResponse: String = "",
@@ -35,7 +30,7 @@ class AnalysisPipelineTest {
             answerResponse = loadFixture("answer_response.json")
         )
 
-        val answered = pipeline.analyze("一段面经正文", profile)
+        val answered = pipeline.analyze("一段面经正文")
 
         assertEquals(2, answered.size)
         assertEquals(95, answered[0].relevanceScore)
@@ -48,7 +43,7 @@ class AnalysisPipelineTest {
     fun `returns empty when no questions extracted`() = runTest {
         val pipeline = pipeline(extractResponse = """{"questions":[]}""")
 
-        val answered = pipeline.analyze("没有题目的正文", profile)
+        val answered = pipeline.analyze("没有题目的正文")
 
         assertTrue(answered.isEmpty())
     }
@@ -61,7 +56,7 @@ class AnalysisPipelineTest {
             relevanceResponse = """{"results":[{"index":0,"score":20,"reason":"弱"},{"index":1,"score":10,"reason":"弱"},{"index":2,"score":5,"reason":"弱"}]}"""
         )
 
-        val answered = pipeline.analyze("一段面经正文", profile)
+        val answered = pipeline.analyze("一段面经正文")
 
         assertTrue(answered.isEmpty())
     }

@@ -16,13 +16,13 @@ class AnalysisPipeline(
      * 对一段面经正文进行完整分析。
      * @return 与简历相关的、已作答的题目；若无题目或无相关题目则返回空列表。
      */
-    override suspend fun analyze(postText: String, profile: ResumeProfile): List<AnsweredQuestion> {
+    override suspend fun analyze(postText: String): List<AnsweredQuestion> {
         val questions = extractor.extract(postText)
         if (questions.isEmpty()) return emptyList()
 
-        val relevant = matcher.match(questions, profile, relevanceThreshold)
+        val relevant = matcher.match(questions, relevanceThreshold)
         if (relevant.isEmpty()) return emptyList()
 
-        return answerer.answer(relevant, profile)
+        return answerer.answer(relevant)
     }
 }

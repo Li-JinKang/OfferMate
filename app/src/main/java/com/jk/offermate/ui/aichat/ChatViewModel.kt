@@ -11,7 +11,6 @@ import com.jk.offermate.agent.chat.FollowUpService
 import com.jk.offermate.agent.chat.QuestionContext
 import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
-import com.jk.offermate.data.resume.ResumeRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,8 +34,7 @@ class ChatViewModel(
     private val questionId: String?,
     private val questionRepository: QuestionRepository,
     private val conversationRepository: ConversationRepository,
-    private val followUpService: FollowUpService,
-    private val resumeRepository: ResumeRepository
+    private val followUpService: FollowUpService
 ) : ViewModel() {
 
     /** 当前会话 id；null 表示尚未创建（空白对话）。 */
@@ -85,7 +83,6 @@ class ChatViewModel(
                 conversationRepository.append(convId, Role.USER, content)
                 val reply = followUpService.reply(
                     context = currentContext(),
-                    profile = resumeRepository.profile.first(),
                     history = conversationRepository.history(convId)
                 )
                 conversationRepository.append(convId, Role.ASSISTANT, reply)
@@ -123,7 +120,6 @@ class ChatViewModel(
                 }
                 val revised = followUpService.reviseAnswer(
                     context = ctx,
-                    profile = resumeRepository.profile.first(),
                     history = history
                 )
                 if (revised.isNotBlank()) {
@@ -185,8 +181,7 @@ class ChatViewModel(
             questionId: String?,
             questionRepository: QuestionRepository,
             conversationRepository: ConversationRepository,
-            followUpService: FollowUpService,
-            resumeRepository: ResumeRepository
+            followUpService: FollowUpService
         ) = viewModelFactory {
             initializer {
                 ChatViewModel(
@@ -194,8 +189,7 @@ class ChatViewModel(
                     questionId,
                     questionRepository,
                     conversationRepository,
-                    followUpService,
-                    resumeRepository
+                    followUpService
                 )
             }
         }

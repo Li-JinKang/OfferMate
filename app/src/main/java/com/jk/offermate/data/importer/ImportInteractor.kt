@@ -4,7 +4,6 @@ import com.jk.offermate.agent.AiException
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.agent.PostAnalyzer
 import com.jk.offermate.agent.QuestionCategorizer
-import com.jk.offermate.agent.ResumeProfile
 import com.jk.offermate.data.ocr.OcrTextRecognizer
 import com.jk.offermate.data.reader.ContentReader
 import com.jk.offermate.data.reader.ExtractionMethod
@@ -31,9 +30,9 @@ class ImportInteractor(
 ) : Importer {
 
     /** 从链接导入：读取正文 →（图片 OCR）→ 分析。读取失败则回退为"需手动粘贴"。 */
-    override suspend fun importFromUrl(url: String, profile: ResumeProfile): ImportResult =
+    override suspend fun importFromUrl(url: String): ImportResult =
         when (val read = contentReader.read(url)) {
-            is ReadResult.Success -> analyze(enrichWithImageOcr(read.content), profile)
+            is ReadResult.Success -> analyze(enrichWithImageOcr(read.content))
             is ReadResult.NeedsManualInput -> ImportResult.NeedsManualInput(read.resolvedUrl, read.reason)
         }
 
@@ -59,19 +58,19 @@ class ImportInteractor(
     }
 
     /** 从用户手动粘贴的正文导入：直接分析。 */
-    override suspend fun importFromText(text: String, profile: ResumeProfile, sourceUrl: String): ImportResult {
+    override suspend fun importFromText(text: String, sourceUrl: String): ImportResult {
         val content = PostContent(
             title = "",
             text = text,
             sourceUrl = sourceUrl,
             method = ExtractionMethod.MANUAL
         )
-        return analyze(content, profile)
+        return analyze(content)
     }
 
-    private suspend fun analyze(content: PostContent, profile: ResumeProfile): ImportResult =
+    private suspend fun analyze(content: PostContent): ImportResult =
         try {
-            val questions = analyzer.analyze(content.text, profile)
+            val questions = analyzer.analyze(content.text)
             ImportResult.Success(content, categorize(questions))
         } catch (e: AiException) {
             ImportResult.Failed(e.message ?: "分析失败")

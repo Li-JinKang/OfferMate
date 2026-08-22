@@ -10,7 +10,6 @@ import androidx.work.WorkerParameters
 import com.jk.offermate.OfferMateApplication
 import com.jk.offermate.data.importer.ImportResult
 import com.jk.offermate.domain.model.ImportStatus
-import kotlinx.coroutines.flow.first
 
 /**
  * 后台分析任务：读取链接/粘贴正文 → AI 分析 → 落库 → 通知。
@@ -37,20 +36,12 @@ class AnalyzePostWorker(
 
         return try {
             store.markStatus(id, ImportStatus.ANALYZING)
-            val profile = container.resumeRepository.profile.first()
-            Log.d(TAG, "profile rawTextLen=${profile.rawText.length} skills=${profile.skills.size}")
-            if (profile.rawText.isBlank()) {
-                Log.w(TAG, "no resume -> abort")
-                store.markFailed(id)
-                notifier.notifyDone("分析未开始", "请先在\"我的\"里上传简历")
-                return Result.success()
-            }
 
             Log.d(TAG, "calling importInteractor…")
             val result = if (mode == MODE_TEXT) {
-                container.importInteractor.importFromText(text, profile, url)
+                container.importInteractor.importFromText(text, url)
             } else {
-                container.importInteractor.importFromUrl(url, profile)
+                container.importInteractor.importFromUrl(url)
             }
 
             when (result) {
