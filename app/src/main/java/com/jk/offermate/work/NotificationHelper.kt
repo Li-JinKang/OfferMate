@@ -4,12 +4,16 @@ import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.jk.offermate.MainActivity
+import com.jk.offermate.R
 
 /**
  * 后台分析完成通知。渠道在初始化时创建；Android 13+ 未授予通知权限时静默跳过，避免崩溃。
@@ -30,10 +34,11 @@ class NotificationHelper(private val context: Context) {
             return
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(launchAppIntent())
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(nextId(), notification)
@@ -42,12 +47,26 @@ class NotificationHelper(private val context: Context) {
     /** 前台进度通知（分析进行中，常驻不可滑除）。 */
     fun buildProgressNotification(text: String): Notification =
         NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("正在分析面经")
             .setContentText(text)
+            .setContentIntent(launchAppIntent())
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+
+    /** 点击通知时打开 App 主界面。singleTask 启动模式下会复用已有实例。 */
+    private fun launchAppIntent(): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
 
     private fun nextId(): Int = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
 
