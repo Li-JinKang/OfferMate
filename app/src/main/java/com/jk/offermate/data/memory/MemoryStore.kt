@@ -200,7 +200,7 @@ class MemoryStore(
         this[key]?.jsonPrimitive?.contentOrNull ?: ""
 
     private fun requireSafe(segment: String) {
-        require(safeSegment(segment)) { "非法的记忆标识: '$segment'" }
+        require(MemoryIds.isValid(segment)) { "非法的记忆标识: '$segment'" }
     }
 
     private companion object {
@@ -208,9 +208,5 @@ class MemoryStore(
         const val GLOBAL_FILE = "global.md"
         const val PROFILE_FILE = "profile.md"
         const val MD_EXT = ".md"
-
-        /** 合法的路径片段：非空、仅限字母/数字/下划线/连字符，防止路径穿越。 */
-        private val SAFE = Regex("^[A-Za-z0-9_-]{1,128}$")
-        fun safeSegment(s: String): Boolean = SAFE.matches(s)
     }
 }
