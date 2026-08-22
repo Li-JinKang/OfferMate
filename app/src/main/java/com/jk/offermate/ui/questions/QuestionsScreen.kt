@@ -140,7 +140,7 @@ fun QuestionsScreen(
         val selectMode = { m: QuestionActionMode -> mode = if (mode == m) QuestionActionMode.None else m }
         FloatingActionBar(
             items = listOf(
-                ActionBarItemSpec(Icons.AutoMirrored.Filled.ArrowBack, "返回", false, MaterialTheme.colorScheme.primary, onBack),
+                ActionBarItemSpec(Icons.AutoMirrored.Filled.ArrowBack, "返回", false, MaterialTheme.colorScheme.primary, onClick = onBack),
                 ActionBarItemSpec(Icons.Filled.Delete, "删除", mode == QuestionActionMode.Delete, ActionDeleteColor) { selectMode(QuestionActionMode.Delete) },
                 ActionBarItemSpec(Icons.Filled.Check, "已刷", mode == QuestionActionMode.Practice, ActionPracticeColor) { selectMode(QuestionActionMode.Practice) },
                 ActionBarItemSpec(Icons.Filled.Email, "追问", mode == QuestionActionMode.FollowUp, Indigo) { selectMode(QuestionActionMode.FollowUp) }

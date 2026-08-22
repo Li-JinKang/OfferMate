@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -112,7 +113,19 @@ private fun TabPillItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
-        Icon(imageVector = screen.icon, contentDescription = screen.label, tint = contentColor)
+        val iconTint = if (screen.coloredIcon) Color.Unspecified else contentColor
+        when {
+            screen.iconRes != null -> Icon(
+                painter = painterResource(screen.iconRes),
+                contentDescription = screen.label,
+                tint = iconTint
+            )
+            screen.icon != null -> Icon(
+                imageVector = screen.icon,
+                contentDescription = screen.label,
+                tint = iconTint
+            )
+        }
         if (selected) {
             Spacer(Modifier.width(8.dp))
             Text(

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 移动分类图标：实线圆角方块（内含箭头）+ 虚线目标方块，绿→蓝渐变。
+     多色/渐变图标，渲染时不要着色（tint = Unspecified）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- 目标方块：虚线描边（用多段短线模拟 dash，圆头），位于右下、在实线方块之后 -->
+    <path
+        android:strokeColor="#1B9BF2"
+        android:strokeWidth="26"
+        android:strokeLineCap="round"
+        android:pathData="
+            M300,220 L345,220 M375,220 L420,220 M452,224 L470,242
+            M478,278 L478,323 M478,355 L478,400 M476,438 L458,460
+            M420,478 L375,478 M345,478 L300,478 M270,478 L240,478
+            M222,460 L222,432 M222,400 L222,360" />
+
+    <!-- 实线方块的白色内衬：遮住其后的虚线方块重叠部分 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M113,55 L254,55 Q312,55 312,113 L312,254 Q312,312 254,312 L113,312 Q55,312 55,254 L55,113 Q55,55 113,55 Z" />
+
+    <!-- 实线圆角方块：渐变描边 -->
+    <path
+        android:strokeWidth="46"
+        android:pathData="M113,55 L254,55 Q312,55 312,113 L312,254 Q312,312 254,312 L113,312 Q55,312 55,254 L55,113 Q55,55 113,55 Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="60" android:startY="60"
+                android:endX="300" android:endY="300"
+                android:startColor="#22E39B"
+                android:endColor="#1B9BF2" />
+        </aapt:attr>
+    </path>
+
+    <!-- 箭头 ↘：细箭杆 + 直角开口箭头（描边，方头、直角折角，不做三角形） -->
+    <path
+        android:strokeWidth="24"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="miter"
+        android:pathData="M128,128 L220,220 M172,250 L250,250 L250,172">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="60" android:startY="60"
+                android:endX="300" android:endY="300"
+                android:startColor="#22E39B"
+                android:endColor="#1B9BF2" />
+        </aapt:attr>
+    </path>
+</vector>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主页：青色圆形 + 白色房子（含门洞）。多色图标，渲染时不要着色（tint = Unspecified）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- 青色圆底 -->
+    <path
+        android:fillColor="#06BFB4"
+        android:pathData="M256,6 A250,250 0 1,0 256,506 A250,250 0 1,0 256,6 Z" />
+
+    <!-- 白色房子轮廓（屋顶 + 墙体） -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="
+            M256,152
+            L390,268
+            Q398,275 388,275
+            L360,275
+            L360,378
+            Q360,386 352,386
+            L160,386
+            Q152,386 152,378
+            L152,275
+            L124,275
+            Q114,275 122,268
+            Z" />
+
+    <!-- 门洞（青色，透出圆底颜色） -->
+    <path
+        android:fillColor="#06BFB4"
+        android:pathData="M236,386 L236,334 Q236,320 256,320 Q276,320 276,334 L276,386 Z" />
+</vector>

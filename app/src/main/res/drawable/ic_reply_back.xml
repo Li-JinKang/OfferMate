@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 返回/回复箭头：实心左向箭头带下弯的钩尾。单色图标，可随状态着色。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:fillColor="#38A2F0"
+        android:pathData="
+            M12,246
+            L288,28
+            Q300,20 300,44
+            L300,150
+            C380,150 455,90 470,205
+            C488,320 452,430 372,486
+            C360,495 356,480 366,470
+            C420,428 425,352 372,320
+            C345,304 315,304 300,304
+            L300,452
+            Q300,478 280,463
+            L12,252
+            Q4,249 12,246
+            Z" />
+</vector>

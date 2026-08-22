@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分类/题库网格图标：三个蓝色圆角方块 + 右下角青绿色菱形。
+     多色图标，渲染时不要着色（tint = Unspecified）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- 左上方块 -->
+    <path
+        android:fillColor="#2B8EF4"
+        android:pathData="M80,35 L185,35 Q230,35 230,80 L230,185 Q230,230 185,230 L80,230 Q35,230 35,185 L35,80 Q35,35 80,35 Z" />
+    <!-- 右上方块 -->
+    <path
+        android:fillColor="#2B8EF4"
+        android:pathData="M327,35 L432,35 Q477,35 477,80 L477,185 Q477,230 432,230 L327,230 Q282,230 282,185 L282,80 Q282,35 327,35 Z" />
+    <!-- 左下方块 -->
+    <path
+        android:fillColor="#2B8EF4"
+        android:pathData="M80,282 L185,282 Q230,282 230,327 L230,432 Q230,477 185,477 L80,477 Q35,477 35,432 L35,327 Q35,282 80,282 Z" />
+    <!-- 右下菱形（旋转圆角方块） -->
+    <path
+        android:fillColor="#3DCDAD"
+        android:pathData="M360.3,262.7 Q378,245 395.7,262.7 L493.3,360.3 Q511,378 493.3,395.7 L395.7,493.3 Q378,511 360.3,493.3 L262.7,395.7 Q245,378 262.7,360.3 Z" />
+</vector>

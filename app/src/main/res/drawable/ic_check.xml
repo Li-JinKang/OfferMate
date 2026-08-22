@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 对勾：粗体对勾，左端圆头、右上端收成尖。单色图标，可随状态着色。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:fillColor="#38A2F0"
+        android:pathData="
+            M484,84
+            L206,494
+            Q196,506 184,496
+            L44,318
+            Q28,298 42,284
+            Q56,272 70,290
+            L208,398
+            L470,96
+            Q484,80 484,84
+            Z" />
+</vector>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI 对话 Tab 图标：两个重叠的对话气泡（蓝色）。多色图标，渲染时不要着色（tint = Unspecified）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- 后置的浅蓝气泡（右下），带右下尾巴 -->
+    <path
+        android:fillColor="#5AACF6"
+        android:pathData="M275,210 L363,210 Q488,210 488,335 L488,345 Q488,470 363,470 L295,470 Q150,470 150,345 L150,335 Q150,210 275,210 Z" />
+    <path
+        android:fillColor="#5AACF6"
+        android:pathData="M455,415 L500,495 L400,468 Z" />
+
+    <!-- 前置的主气泡（左上），带左下尾巴 -->
+    <path
+        android:fillColor="#2B8EF4"
+        android:pathData="M160,45 L270,45 Q405,45 405,180 L405,200 Q405,335 270,335 L160,335 Q25,335 25,200 L25,180 Q25,45 160,45 Z" />
+    <path
+        android:fillColor="#2B8EF4"
+        android:pathData="M70,300 L22,368 L155,330 Z" />
+
+    <!-- 气泡内两条白色文字线 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M109,140 L311,140 Q330,140 330,159 Q330,178 311,178 L109,178 Q90,178 90,159 Q90,140 109,140 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M109,205 L231,205 Q250,205 250,224 Q250,243 231,243 L109,243 Q90,243 90,224 Q90,205 109,205 Z" />
+</vector>

@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.jk.offermate.R
 import com.jk.offermate.agent.AnsweredQuestion
 import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.ActionBarItemSpec
@@ -193,10 +194,17 @@ fun QuizCategoryScreen(
         val selectMode = { m: CategoryActionMode -> mode = if (mode == m) CategoryActionMode.None else m }
         FloatingActionBar(
             items = listOf(
-                ActionBarItemSpec(Icons.AutoMirrored.Filled.ArrowBack, "返回", false, MaterialTheme.colorScheme.primary, onBack),
+                ActionBarItemSpec(Icons.AutoMirrored.Filled.ArrowBack, "返回", false, MaterialTheme.colorScheme.primary, onClick = onBack),
                 ActionBarItemSpec(Icons.Filled.Delete, "删除", mode == CategoryActionMode.Delete, ActionDeleteColor) { selectMode(CategoryActionMode.Delete) },
                 ActionBarItemSpec(Icons.Filled.Check, "已刷", mode == CategoryActionMode.Practice, ActionPracticeColor) { selectMode(CategoryActionMode.Practice) },
-                ActionBarItemSpec(Icons.AutoMirrored.Filled.ArrowForward, "移动", mode == CategoryActionMode.Move, Indigo) { selectMode(CategoryActionMode.Move) }
+                ActionBarItemSpec(
+                    icon = null,
+                    label = "移动",
+                    selected = mode == CategoryActionMode.Move,
+                    activeColor = Indigo,
+                    iconRes = R.drawable.ic_move_category,
+                    coloredIcon = true
+                ) { selectMode(CategoryActionMode.Move) }
             ),
             modifier = Modifier
                 .align(Alignment.BottomCenter)

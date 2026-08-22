@@ -18,17 +18,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/** 通用底部浮动操作项（返回类为即时动作 selected=false；模式类用 selected 表达激活）。 */
+/**
+ * 通用底部浮动操作项（返回类为即时动作 selected=false；模式类用 selected 表达激活）。
+ * 图标二选一：[icon] 单色矢量（随状态着色）；[iconRes] 多色 drawable（[coloredIcon]=true 时不着色）。
+ */
 data class ActionBarItemSpec(
-    val icon: ImageVector,
+    val icon: ImageVector?,
     val label: String,
     val selected: Boolean,
     val activeColor: Color,
+    @param:DrawableRes val iconRes: Int? = null,
+    val coloredIcon: Boolean = false,
     val onClick: () -> Unit
 )
 
@@ -78,7 +85,19 @@ private fun FloatingActionBarItem(spec: ActionBarItemSpec) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
-        Icon(spec.icon, contentDescription = spec.label, tint = content)
+        val iconTint = if (spec.coloredIcon) Color.Unspecified else content
+        when {
+            spec.iconRes != null -> Icon(
+                painter = painterResource(spec.iconRes),
+                contentDescription = spec.label,
+                tint = iconTint
+            )
+            spec.icon != null -> Icon(
+                spec.icon,
+                contentDescription = spec.label,
+                tint = iconTint
+            )
+        }
         if (spec.selected) {
             Spacer(Modifier.width(6.dp))
             Text(
