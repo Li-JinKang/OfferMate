@@ -7,7 +7,7 @@ import com.jk.offermate.agent.Role
  * 上下文组装：把要发送给模型的 `messages` 按固定顺序拼装：
  *
  * ```
- * [system: 角色与任务约束 / 激活档案上下文 / 长期摘要 …（按传入顺序）]
+ * [system: 角色与任务约束 / 记忆上下文 / 长期摘要 …（按传入顺序）]
  * [ …经记忆策略裁剪后的历史 user/assistant 消息… ]
  * [user: 当前输入（若提供）]
  * ```

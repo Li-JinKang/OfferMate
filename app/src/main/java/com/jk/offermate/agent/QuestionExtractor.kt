@@ -42,26 +42,30 @@ class QuestionExtractor(private val aiClient: AiClient) {
     /**
      * 解析模型返回的原始文本为题目列表。
      * 容错：兼容被 ```json``` 包裹、前后有多余文字、直接返回数组或返回 {"questions":[...]}。
+     *
+     * 降级策略：若整体 JSON 无法解析（输出超长被截断等），尝试从 `questions` 数组里
+     * 抢救已完整闭合的对象，避免"最后一题没写完 → 整批抽题结果全丢"。仅当抢救结果也为空时才抛异常。
      */
     fun parse(raw: String): List<ExtractedQuestion> {
         val jsonText = JsonSupport.extractJsonBlock(raw)
-            ?: throw AiException("模型输出中未找到有效 JSON：${raw.take(200)}")
+        val array: JsonArray? = jsonText
+            ?.let { runCatching { JsonSupport.json.parseToJsonElement(it) }.getOrNull() }
+            ?.let { element: JsonElement ->
+                when {
+                    element is JsonArray -> element
+                    element is JsonObject && element["questions"] is JsonArray -> element["questions"]!!.jsonArray
+                    else -> null
+                }
+            }
 
-        val element: JsonElement = try {
-            JsonSupport.json.parseToJsonElement(jsonText)
-        } catch (e: Exception) {
-            throw AiException("JSON 解析失败：${jsonText.take(200)}", e)
-        }
+        // array != null 说明整体 JSON 解析成功（哪怕数组为空，也是模型明确表示"无题目"，不算失败）。
+        // array == null 才是整体解析失败，此时才尝试逐对象抢救；抢救结果也为空才真正报错。
+        val objects: List<JsonObject> = array?.filterIsInstance<JsonObject>()
+            ?: JsonSupport.salvageObjects(raw, "questions").ifEmpty {
+                throw AiException("模型输出中未找到有效 JSON：${raw.take(200)}")
+            }
 
-        val array: JsonArray = when {
-            element is JsonArray -> element
-            element is JsonObject && element["questions"] is JsonArray ->
-                element["questions"]!!.jsonArray
-            else -> throw AiException("JSON 结构不符合预期（缺少 questions 数组）")
-        }
-
-        return array.mapNotNull { item ->
-            val obj = item as? JsonObject ?: return@mapNotNull null
+        return objects.mapNotNull { obj ->
             val question = obj["question"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
             if (question.isEmpty()) return@mapNotNull null
             val tags = (obj["tags"] as? JsonArray)

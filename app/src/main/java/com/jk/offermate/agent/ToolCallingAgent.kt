@@ -1,17 +1,29 @@
 package com.jk.offermate.agent
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+
 /**
  * 工具调用循环（agent 核心）：
  * 发送 messages + 可用工具 → 若模型要求调用工具，则本地执行并把结果回填 → 再次发送，
  * 直到模型给出最终文本或达到 [maxSteps]。
  *
  * 纯编排逻辑，用 fake [ToolCallingLlm] + [Tool] 即可 JVM 单测。
+ *
+ * 工具调用治理（硬约束，不依赖提示词自觉遵守）：
+ * 1. 参数校验：执行前用 [ToolArgumentValidator] 核对 required 字段，缺失则直接把错误信息
+ *    回填给模型（不执行工具），让模型能据此纠正重试，而不是带着缺失参数跑一次未知行为。
+ * 2. 超时保护：每次 [Tool.call] 最多执行 [toolTimeoutMs]，超时视为失败并把结果回填，
+ *    避免单个工具挂住导致整个 agent 循环无限等待（[maxSteps] 无法防御"卡住"，只能防御"啰嗦"）。
  */
 class ToolCallingAgent(
     private val llm: ToolCallingLlm,
     private val tools: ToolRegistry,
     private val maxSteps: Int = 15,
-    private val logger: AgentLogger = NoopAgentLogger
+    private val logger: AgentLogger = NoopAgentLogger,
+    private val toolTimeoutMs: Long = 20_000
 ) {
     suspend fun run(initialMessages: List<ChatMessage>): String {
         val conversation = initialMessages.toMutableList()
@@ -79,17 +91,35 @@ class ToolCallingAgent(
                 logger.w { "工具未找到：${call.name}" }
                 "未知工具：${call.name}"
             } else {
-                runCatching { tool.call(call.argumentsJson) }
-                    .onSuccess { r ->
-                        logger.d {
-                            "工具返回 ← ${call.name} 耗时=${System.currentTimeMillis() - started}ms " +
-                                "结果=${AgentLogger.brief(r)}"
+                val validationError = ToolArgumentValidator.validate(tool.spec, call.argumentsJson)
+                if (validationError != null) {
+                    logger.w { "工具参数校验失败：${call.name} → $validationError" }
+                    validationError
+                } else {
+                    runCatching {
+                        withContext(Dispatchers.Default) {
+                            withTimeout(toolTimeoutMs) { tool.call(call.argumentsJson) }
                         }
                     }
-                    .getOrElse { e ->
-                        logger.w(e) { "工具执行失败：${call.name}" }
-                        "工具执行失败：${e.message}"
-                    }
+                        .onSuccess { r ->
+                            logger.d {
+                                "工具返回 ← ${call.name} 耗时=${System.currentTimeMillis() - started}ms " +
+                                    "结果=${AgentLogger.brief(r)}"
+                            }
+                        }
+                        .getOrElse { e ->
+                            when (e) {
+                                is TimeoutCancellationException -> {
+                                    logger.w(e) { "工具执行超时（>${toolTimeoutMs}ms）：${call.name}" }
+                                    "工具执行超时：${call.name}"
+                                }
+                                else -> {
+                                    logger.w(e) { "工具执行失败：${call.name}" }
+                                    "工具执行失败：${e.message}"
+                                }
+                            }
+                        }
+                }
             }
             conversation += ChatMessage(
                 role = Role.TOOL,

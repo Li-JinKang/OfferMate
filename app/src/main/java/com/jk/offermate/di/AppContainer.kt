@@ -184,7 +184,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     override val analysisPipeline: AnalysisPipeline by lazy {
         AnalysisPipeline(
             extractor = QuestionExtractor(aiClient),
-            matcher = RelevanceMatcher(aiClient, toolCallingLlm, sharedToolRegistry),
+            matcher = RelevanceMatcher(aiClient, toolCallingLlm, sharedToolRegistry, logger = AndroidAgentLogger),
             answerer = AnswerGenerator(aiClient, toolCallingLlm, sharedToolRegistry)
         )
     }

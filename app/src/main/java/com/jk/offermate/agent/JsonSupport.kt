@@ -95,13 +95,17 @@ internal object JsonSupport {
     }
 
     /**
-     * 从（可能被截断的）模型输出中，尽力抢救出 `answers` 数组里**已完整闭合**的对象。
+     * 从（可能被截断的）模型输出中，尽力抢救出指定数组字段（如 `answers`/`questions`/`results`）里
+     * **已完整闭合**的对象。
      *
-     * 用途：当整段 JSON 因输出超长被截断而无法整体解析时，仍能保住已经生成完的那些答案，
-     * 避免"最后一题没写完 → 整批全丢"。逐个对象做配平扫描，遇到第一个无法闭合（截断处）即停止。
+     * 用途：当整段 JSON 因输出超长被截断、或结构轻微不规范而无法整体解析时，仍能保住已经生成完的
+     * 那部分条目，避免"最后一项没写完/格式有瑕疵 → 整批全丢"。逐个对象做配平扫描，
+     * 遇到第一个无法闭合（截断处）即停止。
+     *
+     * @param arrayKey 期望的数组字段名（如 "answers"）；未命中该 key 时兜底扫描原文里第一个 `[`。
      */
-    fun salvageObjects(raw: String): List<kotlinx.serialization.json.JsonObject> {
-        val arrayStart = findArrayStartAfterKey(raw, "answers")
+    fun salvageObjects(raw: String, arrayKey: String): List<kotlinx.serialization.json.JsonObject> {
+        val arrayStart = findArrayStartAfterKey(raw, arrayKey)
             ?: raw.indexOf('[').takeIf { it >= 0 }
             ?: return emptyList()
 

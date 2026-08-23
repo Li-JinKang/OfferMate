@@ -84,7 +84,7 @@ class AnswerGenerator(
         // 抢救路径：整体无法解析（多为输出超长被截断）时，尽量捞回已写完的答案对象，
         // 避免"最后一题没写完 → 整批全丢"。
         val objects: List<JsonObject> = parsedArray?.filterIsInstance<JsonObject>()
-            ?: JsonSupport.salvageObjects(raw)
+            ?: JsonSupport.salvageObjects(raw, "answers")
 
         if (objects.isEmpty()) {
             throw AiException("模型输出中未找到有效答案 JSON：${raw.take(200)}")
