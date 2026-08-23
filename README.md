@@ -17,9 +17,10 @@
 
 <!-- TODO: 在这里放一张 App 首页/整体效果截图 -->
 <p align="center">
-  <img src="docs/screenshots/home.png" width="280" alt="首页截图占位" />
-  <img src="docs/screenshots/quiz.png" width="280" alt="刷题模式截图占位" />
-  <img src="docs/screenshots/chat.png" width="280" alt="AI 追问截图占位" />
+  <img width="200" height="442" alt="首页" src="https://github.com/user-attachments/assets/7e22107b-1162-4914-b4ac-9a381cef07b3" />
+  <img width="200" height="442" alt="题库页" src="https://github.com/user-attachments/assets/0d3c2d79-5bb9-4b19-b2dd-88b453ea7c72" />
+  <img width="200" height="442" alt="题目页" src="https://github.com/user-attachments/assets/1eb54b5b-63e7-4dc0-a12a-48b3de8b1457" />
+  <img width="200" height="442" alt="ai对话页" src="https://github.com/user-attachments/assets/797db701-fb28-4b9a-9270-4d10b07d7645" />
 </p>
 
 ## 目录
@@ -27,18 +28,21 @@
 - [这是什么](#这是什么)
 - [核心能力](#核心能力)
 - [工作流程](#工作流程)
-- [功能预览](#功能预览)
 - [技术架构](#技术架构)
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
 - [快速开始](#快速开始)
 - [关于 AI Key（BYOK）](#关于-ai-keybyok)
 - [隐私说明](#隐私说明)
-- [路线图](#路线图)
 
 ## 这是什么
 
-求职期间刷"面经"（面试经验帖）是件苦活：帖子里的问题夹杂在大段文字/截图中，哪些跟自己的岗位和技术栈相关、该怎么答，都得自己一条条筛。
+在互联网求职期间，经常会刷到各种面经，一个一个cv复制给ai进行回答抑或是截图发给ai，都只是暂时性地解决了问题。更多的时候，我们希望能够整理、回顾一些好的面经，举例来说，可能会在通勤时刷到了觉得不错的帖子，希望能够让ai给出答案，但是我未必马上就会去看，而是等吃饭时再看。以前找实习的时候，同样是截图然后喂给ai，但是就会造成需要耗费时间找到以前的记录，比如：
+
+<img width="200" height="442" alt="image" src="https://github.com/user-attachments/assets/1292da8a-02e3-4428-83ec-b87be3c5e133" />
+<img width="200" height="442" alt="25c703f212cb88df792d2fd18bbc2744" src="https://github.com/user-attachments/assets/50cb1fac-45b6-40a7-8679-e323ed20aaa1" />
+
+所以我想通过这框app，来收集面经、通过ai给出回答、自己整理面经、根据简历匹配面经问题。
 
 **OfferMate 不是一个刷题库，也不会凭空"出题"**。它做的是更聚焦的事情：
 
@@ -84,14 +88,6 @@
       ▼
 （可选）针对某题发起 AI 追问 / 对话
 ```
-
-## 功能预览
-
-<!-- TODO: 按下面的表格逐个替换为实际截图 -->
-
-| 首页 / 导入 | 题目列表 | 刷题模式 | AI 追问 |
-|---|---|---|---|
-| ![首页占位](docs/screenshots/placeholder.png) | ![题目列表占位](docs/screenshots/placeholder.png) | ![刷题模式占位](docs/screenshots/placeholder.png) | ![AI追问占位](docs/screenshots/placeholder.png) |
 
 ## 技术架构
 
