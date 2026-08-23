@@ -59,8 +59,11 @@ class HomeViewModel(
     }
 
     fun onExtract() {
-        val link = _uiState.value.linkInput.trim()
-        if (link.isEmpty()) return
+        val input = _uiState.value.linkInput.trim()
+        if (input.isEmpty()) return
+        // 用户可能粘贴的是"标题 + 链接 + 推广文案"整段分享文本（如小红书分享），
+        // 而非纯链接；这里统一用 ShareIntentParser 提取出真正的链接，避免把整段文本当 URL 打开失败。
+        val link = ShareIntentParser.extractLink(input) ?: input
         viewModelScope.launch {
             if (!canAnalyze()) return@launch
             importScheduler.enqueueUrl(link)

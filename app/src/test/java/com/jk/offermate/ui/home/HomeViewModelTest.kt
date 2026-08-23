@@ -115,6 +115,20 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `extract with title and link mixed text extracts pure link`() {
+        val scheduler = FakeImportScheduler()
+        val vm = viewModel(scheduler)
+        vm.onLinkChange(
+            "拼多多客户端二面凉经 深深的八股拷打，答不上来的题... https://xhslink.cn/o/8XYgQ9UCwdT " +
+                "先复制再打开【小红书】，精彩内容等你翻阅。"
+        )
+
+        vm.onExtract()
+
+        assertEquals(listOf("https://xhslink.cn/o/8XYgQ9UCwdT"), scheduler.urls)
+    }
+
+    @Test
     fun `paste analyze enqueues text`() {
         val scheduler = FakeImportScheduler()
         val vm = viewModel(scheduler)
