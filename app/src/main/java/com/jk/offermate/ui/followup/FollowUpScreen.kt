@@ -222,9 +222,11 @@ fun FollowUpScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
+                    // 与悬浮 dock（输入框）一致的 24dp 水平内边距，且左对齐——
+                    // 让“更新答案”与输入框左边缘对齐。
+                    .padding(horizontal = 24.dp)
                     .padding(bottom = contentBottomPadding),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                horizontalAlignment = Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 error?.let {
@@ -252,7 +254,8 @@ fun FollowUpScreen(
                 if (showUpdateButton) {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = IndigoContainer,
+                        // 半透明浮层，与输入框一致，显得真正悬浮、不遮挡下方内容。
+                        color = IndigoContainer.copy(alpha = 0.82f),
                         shadowElevation = 6.dp,
                         modifier = Modifier.clickable(enabled = !sending, onClick = onUpdateAnswer)
                     ) {
