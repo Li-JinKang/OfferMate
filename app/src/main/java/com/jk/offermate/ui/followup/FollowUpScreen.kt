@@ -142,13 +142,18 @@ fun FollowUpScreen(
         }
     }
 
+    // 底部是否有常驻/临时的附加元素（错误提示 / 通知 / 更新答案入口）。
+    // 有则让它们悬浮在 dock 之上；无则让消息列表铺到屏幕底部、内容从透明 dock 下方穿过（与首页一致）。
+    val hasBottomExtras = error != null || notice != null ||
+        (question != null && messages.any { it.role == Role.ASSISTANT })
+
     Column(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            // 键盘弹起时整体上移；底部留白为悬浮输入 dock 预留空间
+            // 键盘弹起时整体上移。不再用底部 padding 预留 dock 空间——改由列表 contentPadding 承担，
+            // 让消息内容可以滚动穿过悬浮 dock 下方，而不是被截断在一个“容器”里。
             .imePadding()
-            .padding(bottom = contentBottomPadding)
     ) {
         ChatTopBar(
             title = titleOverride?.takeIf { it.isNotBlank() }
@@ -177,7 +182,14 @@ fun FollowUpScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                    // 底部留白：无附加元素时为悬浮 dock 预留空间（内容可滚动穿过其下方）；
+                    // 有附加元素时它们自己已避让 dock，这里只留常规内边距。
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 16.dp,
+                        bottom = 16.dp + if (hasBottomExtras) 0.dp else contentBottomPadding
+                    ),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
                     itemsIndexed(messages) { _, message ->
@@ -191,12 +203,12 @@ fun FollowUpScreen(
                 }
             }
 
-            // 回到底部悬浮按钮
+            // 回到底部悬浮按钮（避让悬浮 dock）
             if (showScrollDown) {
                 Box(
                     Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 12.dp)
+                        .padding(end = 16.dp, bottom = 12.dp + contentBottomPadding)
                 ) {
                     ScrollToBottomButton {
                         scope.launch { listState.animateScrollToItem(messages.lastIndex) }
@@ -205,48 +217,53 @@ fun FollowUpScreen(
             }
         }
 
-        error?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-            LaunchedEffect(it) {
-                kotlinx.coroutines.delay(4000)
-                onConsumeError()
-            }
-        }
-        notice?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-            LaunchedEffect(it) {
-                kotlinx.coroutines.delay(3000)
-                onConsumeNotice()
-            }
-        }
+        // 底部附加元素统一避让悬浮 dock：整体下移 contentBottomPadding，悬浮在 dock 之上。
+        if (hasBottomExtras) {
+            Column(Modifier.fillMaxWidth().padding(bottom = contentBottomPadding)) {
+                error?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    LaunchedEffect(it) {
+                        kotlinx.coroutines.delay(4000)
+                        onConsumeError()
+                    }
+                }
+                notice?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    LaunchedEffect(it) {
+                        kotlinx.coroutines.delay(3000)
+                        onConsumeNotice()
+                    }
+                }
 
-        // 更新答案入口（仅绑定题目的会话才有）
-        if (question != null && messages.any { it.role == Role.ASSISTANT }) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = IndigoContainer,
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .clickable(enabled = !sending, onClick = onUpdateAnswer)
-            ) {
-                Text(
-                    "用本轮讨论更新答案",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = OnIndigoContainer,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
+                // 更新答案入口（仅绑定题目的会话才有）
+                if (question != null && messages.any { it.role == Role.ASSISTANT }) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = IndigoContainer,
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp)
+                            .clickable(enabled = !sending, onClick = onUpdateAnswer)
+                    ) {
+                        Text(
+                            "用本轮讨论更新答案",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = OnIndigoContainer,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
             }
-            Spacer(Modifier.height(4.dp))
         }
         // 底部输入胶囊已上提到 app 级常驻 dock（见 BottomDock），此处不再渲染。
     }
@@ -266,7 +283,8 @@ internal fun CompactChatInput(
     val canSend = !sending && input.isNotBlank()
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
+        // 与首页 Tab 胶囊一致的半透明浮层，让下方内容透出、显得真正悬浮而非“坐在容器上”。
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
         shadowElevation = 8.dp,
         modifier = Modifier.fillMaxWidth().height(DockPillHeight)
     ) {
