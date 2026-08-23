@@ -39,10 +39,13 @@
 
 在互联网求职期间，经常会刷到各种面经，一个一个cv复制给ai进行回答抑或是截图发给ai，都只是暂时性地解决了问题。更多的时候，我们希望能够整理、回顾一些好的面经，举例来说，可能会在通勤时刷到了觉得不错的帖子，希望能够让ai给出答案，但是我未必马上就会去看，而是等吃饭时再看。以前找实习的时候，同样是截图然后喂给ai，但是就会造成需要耗费时间找到以前的记录，比如：
 
-<img width="200" height="442" alt="image" src="https://github.com/user-attachments/assets/1292da8a-02e3-4428-83ec-b87be3c5e133" />
-<img width="200" height="442" alt="25c703f212cb88df792d2fd18bbc2744" src="https://github.com/user-attachments/assets/50cb1fac-45b6-40a7-8679-e323ed20aaa1" />
+<p align="center">
+  <img width="200" height="442" alt="image" src="https://github.com/user-attachments/assets/1292da8a-02e3-4428-83ec-b87be3c5e133" />
+  <img width="200" height="442" alt="25c703f212cb88df792d2fd18bbc2744" src="https://github.com/user-attachments/assets/50cb1fac-45b6-40a7-8679-e323ed20aaa1" />
+</p>
 
 所以我想通过这框app，来收集面经、通过ai给出回答、自己整理面经、根据简历匹配面经问题。
+
 
 **OfferMate 不是一个刷题库，也不会凭空"出题"**。它做的是更聚焦的事情：
 
