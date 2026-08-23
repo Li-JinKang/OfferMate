@@ -95,6 +95,8 @@ fun FollowUpScreen(
     notice: String?,
     onBack: () -> Unit,
     onUpdateAnswer: () -> Unit,
+    /** 是否允许「用讨论更新答案」：同一段讨论只允许一次，需有新对话后才再次开放。 */
+    canUpdateAnswer: Boolean = false,
     onNewSession: () -> Unit = {},
     onSwitchSession: (String) -> Unit = {},
     onConsumeError: () -> Unit,
@@ -142,8 +144,9 @@ fun FollowUpScreen(
         }
     }
 
-    // “用本轮讨论更新答案”入口：仅绑定题目（追问）的会话才有。
-    val showUpdateButton = question != null && messages.any { it.role == Role.ASSISTANT }
+    // “用本轮讨论更新答案”入口：仅绑定题目（追问）的会话，且自上次更新以来又有新对话时才显示，
+    // 避免同一段讨论重复触发、空调 API。
+    val showUpdateButton = canUpdateAnswer && question != null && messages.any { it.role == Role.ASSISTANT }
     // 更新答案悬浮条为消息列表额外预留的底部空间，避免最后一条消息被它盖住。
     val updateButtonReserve = if (showUpdateButton) 52.dp else 0.dp
 

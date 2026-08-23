@@ -240,6 +240,7 @@ private fun AiChatConversation(
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val canUpdateAnswer by viewModel.canUpdateAnswer.collectAsStateWithLifecycle()
 
     // 输入内容随会话（chatKey）切换而重置
     var input by rememberSaveable(chatKey) { mutableStateOf("") }
@@ -283,6 +284,7 @@ private fun AiChatConversation(
         notice = notice,
         onBack = {},
         onUpdateAnswer = viewModel::updateAnswerFromDiscussion,
+        canUpdateAnswer = canUpdateAnswer,
         onNewSession = onNewChat,
         onSwitchSession = {},
         onConsumeError = viewModel::consumeError,
