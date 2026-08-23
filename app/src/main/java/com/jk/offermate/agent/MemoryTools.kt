@@ -113,7 +113,8 @@ abstract class DetailTool(
     protected fun detailSpec() = ToolSpec(
         name = toolName,
         description = "加载候选人简历里某个${label}的详细内容（背景/职责/技术栈/难点/亮点），用于深入点评或结合作答。" +
-            "profileId 与 $itemIdParam 取自 load_profile_overview 的概览列表。",
+            "profileId 取自 list_memory_profiles；$itemIdParam 必须取自 load_profile_overview 概览里各条目前缀的 " +
+            "**id= 值**（例如 id=vibeplayer 就传 vibeplayer），不要用中文标题或公司全名。",
         parametersJson = """
             {"type":"object","properties":{
               "profileId":{"type":"string","description":"方向记忆 id"},
@@ -125,7 +126,13 @@ abstract class DetailTool(
     override suspend fun call(argumentsJson: String): String {
         val profileId = argString(argumentsJson, "profileId") ?: return "（缺少参数 profileId）"
         val itemId = argString(argumentsJson, itemIdParam) ?: return "（缺少参数 $itemIdParam）"
-        return store.readDetail(profileId, kind, itemId)
-            ?: "（未找到${label}：$itemId，请先用 load_profile_overview 确认可用 id）"
+        // 容错解析：传入的可能是真实 id，也可能是显示名/大小写不一致，统一解析成实际文件 id。
+        val resolved = runCatching { store.resolveDetailId(profileId, kind, itemId) }.getOrNull()
+        if (resolved != null) {
+            store.readDetail(profileId, kind, resolved)?.let { return it }
+        }
+        val available = runCatching { store.listDetails(profileId, kind) }.getOrDefault(emptyList())
+        val hint = if (available.isEmpty()) "该方向暂无${label}记录" else "可用 id：${available.joinToString("、")}"
+        return "（未找到${label}：$itemId。$hint。请使用 load_profile_overview 概览里各条目的 id= 值）"
     }
 }

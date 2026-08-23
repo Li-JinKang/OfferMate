@@ -35,12 +35,17 @@ class ResumeIngestor(
                 taken = existing.map { it.id }.toSet()
             )
 
+        // 先分配好稳定的条目 id，保证「概览里展示的 id」与「细节文件名」一致，
+        // 这样模型从 overview 拿到 id= 后，load_*_detail 才能精确命中。
+        val projectIds = assignIds(structured.projects)
+        val experienceIds = assignIds(structured.experiences)
+
         // 概览（L2）
-        store.writeProfileOverview(profileId, buildOverview(structured))
+        store.writeProfileOverview(profileId, buildOverview(structured, projectIds, experienceIds))
 
         // 细节（L3）
-        writeDetails(profileId, DetailKind.PROJECT, structured.projects)
-        writeDetails(profileId, DetailKind.EXPERIENCE, structured.experiences)
+        writeDetails(profileId, DetailKind.PROJECT, structured.projects, projectIds)
+        writeDetails(profileId, DetailKind.EXPERIENCE, structured.experiences, experienceIds)
 
         // 跨方向共享事实
         if (structured.globalFacts.isNotEmpty()) {
@@ -59,19 +64,35 @@ class ResumeIngestor(
         return Result(profileId, isNew)
     }
 
-    private suspend fun writeDetails(profileId: String, kind: DetailKind, items: List<ResumeDetail>) {
+    /** 为一组条目分配唯一且稳定的 id（与 [writeDetails] 使用同样的规则）。 */
+    private fun assignIds(items: List<ResumeDetail>): List<String> {
         val used = HashSet<String>()
-        items.forEach { item ->
+        return items.map { item ->
             val itemId = MemoryIds.unique(
-                base = item.id.ifBlank { item.title.ifBlank { kind.dirName } },
+                base = item.id.ifBlank { item.title },
                 taken = used
             )
             used += itemId
-            store.writeDetail(profileId, kind, itemId, buildDetail(item))
+            itemId
         }
     }
 
-    private fun buildOverview(s: StructuredResume): String = buildString {
+    private suspend fun writeDetails(
+        profileId: String,
+        kind: DetailKind,
+        items: List<ResumeDetail>,
+        ids: List<String>
+    ) {
+        items.forEachIndexed { i, item ->
+            store.writeDetail(profileId, kind, ids[i], buildDetail(item))
+        }
+    }
+
+    private fun buildOverview(
+        s: StructuredResume,
+        projectIds: List<String>,
+        experienceIds: List<String>
+    ): String = buildString {
         append("# ").append(s.name.ifBlank { s.targetRole }).append('\n')
         append("目标岗位：").append(s.targetRole).append("\n\n")
         if (s.skills.isNotEmpty()) {
@@ -80,13 +101,19 @@ class ResumeIngestor(
             append('\n')
         }
         if (s.projects.isNotEmpty()) {
-            append("## 项目（可下钻 load_project_detail）\n")
-            s.projects.forEach { append("- ").append(it.title).append("：").append(it.brief).append('\n') }
+            append("## 项目（用 load_project_detail 按 id 下钻）\n")
+            s.projects.forEachIndexed { i, p ->
+                append("- id=").append(projectIds[i]).append("｜").append(p.title)
+                    .append("：").append(p.brief).append('\n')
+            }
             append('\n')
         }
         if (s.experiences.isNotEmpty()) {
-            append("## 经历（可下钻 load_experience_detail）\n")
-            s.experiences.forEach { append("- ").append(it.title).append("：").append(it.brief).append('\n') }
+            append("## 经历（用 load_experience_detail 按 id 下钻）\n")
+            s.experiences.forEachIndexed { i, e ->
+                append("- id=").append(experienceIds[i]).append("｜").append(e.title)
+                    .append("：").append(e.brief).append('\n')
+            }
         }
     }.trimEnd()
 
