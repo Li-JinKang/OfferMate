@@ -35,6 +35,7 @@ import com.jk.offermate.data.reader.HtmlContentExtractor
 import com.jk.offermate.data.reader.OkHttpHtmlFetcher
 import com.jk.offermate.data.reader.OkHttpUrlResolver
 import com.jk.offermate.data.reader.WebViewContentReader
+import com.jk.offermate.data.repository.AnswerUpdateStore
 import com.jk.offermate.data.repository.CategoryOrderStore
 import com.jk.offermate.data.repository.CategoryRepository
 import com.jk.offermate.data.repository.ConversationRepository
@@ -107,7 +108,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val conversationRepository: ConversationRepository by lazy {
-        RoomConversationRepository(database.conversationDao())
+        RoomConversationRepository(database.conversationDao(), AnswerUpdateStore(context))
     }
 
     override val settingsRepository: SettingsRepository by lazy {

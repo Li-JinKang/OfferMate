@@ -77,10 +77,17 @@ interface ConversationRepository {
 
     /** 清空并删除会话。 */
     suspend fun clear(conversationId: String)
+
+    /** 观察「该会话上次用讨论更新答案时的消息条数」；从未更新过为 -1。 */
+    fun observeAnswerUpdatedCount(conversationId: String): Flow<Int>
+
+    /** 记录一次答案更新时的会话消息条数（用于限制同段讨论只更新一次）。 */
+    suspend fun markAnswerUpdated(conversationId: String, messageCount: Int)
 }
 
 class RoomConversationRepository(
     private val dao: ConversationDao,
+    private val answerUpdateStore: AnswerUpdateStore? = null,
     private val now: () -> Long = { System.currentTimeMillis() }
 ) : ConversationRepository {
 
@@ -182,6 +189,13 @@ class RoomConversationRepository(
     override suspend fun clear(conversationId: String) {
         dao.deleteMessages(conversationId)
         dao.delete(conversationId)
+    }
+
+    override fun observeAnswerUpdatedCount(conversationId: String): Flow<Int> =
+        answerUpdateStore?.observe(conversationId) ?: flowOf(-1)
+
+    override suspend fun markAnswerUpdated(conversationId: String, messageCount: Int) {
+        answerUpdateStore?.set(conversationId, messageCount)
     }
 
     private fun toDomain(e: ChatMessageEntity): ChatMessage =

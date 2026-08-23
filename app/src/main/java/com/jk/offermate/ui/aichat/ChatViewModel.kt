@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -88,16 +87,20 @@ class ChatViewModel(
     private val _notice = MutableStateFlow<String?>(null)
     val notice: StateFlow<String?> = _notice.asStateFlow()
 
-    /** 各会话「上次更新答案时的消息条数」，用于限制同一段讨论只更新一次。convId -> 落库消息数。 */
-    private val _lastUpdatedMsgCount = MutableStateFlow<Map<String, Int>>(emptyMap())
+    /** 该会话「上次更新答案时的消息条数」（持久化，退出重开仍有效）；从未更新过为 -1。 */
+    private val lastUpdatedMsgCount: StateFlow<Int> =
+        conversationId
+            .flatMapLatest { id ->
+                if (id == null) flowOf(-1) else conversationRepository.observeAnswerUpdatedCount(id)
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), -1)
 
     /**
      * 是否可以「用讨论更新答案」：绑定题目、已有 AI 回复，且**自上次更新以来又有新的对话**。
-     * 这样避免在没有新内容时重复触发，空调 API 造成浪费。
+     * 这样避免在没有新内容时重复触发，空调 API 造成浪费。标记已持久化，退出 app 重开仍生效。
      */
     val canUpdateAnswer: StateFlow<Boolean> =
-        combine(conversationId, persistedMessages, _lastUpdatedMsgCount) { convId, msgs, marks ->
-            val marker = convId?.let { marks[it] } ?: -1
+        combine(persistedMessages, lastUpdatedMsgCount) { msgs, marker ->
             questionId != null &&
                 msgs.any { it.role == Role.ASSISTANT } &&
                 msgs.size > marker
@@ -167,8 +170,8 @@ class ChatViewModel(
                 )
                 if (revised.isNotBlank()) {
                     questionRepository.updateAnswer(qId, revised)
-                    // 记录本次更新时的消息条数：需再有新对话（条数增长）才允许下次更新。
-                    _lastUpdatedMsgCount.update { it + (convId to history.size) }
+                    // 持久化记录本次更新时的消息条数：需再有新对话（条数增长）才允许下次更新。
+                    conversationRepository.markAnswerUpdated(convId, history.size)
                     _notice.value = "答案已根据讨论更新"
                 }
             } catch (e: Exception) {
