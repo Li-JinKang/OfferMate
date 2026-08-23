@@ -321,7 +321,6 @@ private fun QuizHeader(
                 text = "删除分类",
                 icon = Icons.Filled.Delete,
                 onClick = onDeleteCategory,
-                tint = MaterialTheme.colorScheme.error,
                 modifier = Modifier.weight(1f)
             )
         }
