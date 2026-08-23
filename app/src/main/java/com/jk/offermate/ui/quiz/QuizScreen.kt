@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -86,6 +87,7 @@ fun QuizRoute(
         onAddCategory = viewModel::addCategory,
         onAddQuestion = viewModel::addManualQuestion,
         onDeleteCategory = viewModel::deleteCategory,
+        onReorderCategory = viewModel::moveCategory,
         contentBottomPadding = contentBottomPadding
     )
 }
@@ -99,11 +101,14 @@ fun QuizOverviewScreen(
     onAddCategory: (String) -> Unit,
     onAddQuestion: (String, String, String, Difficulty) -> Unit,
     onDeleteCategory: (String) -> Unit = {},
+    onReorderCategory: (Int, Int) -> Unit = { _, _ -> },
     contentBottomPadding: Dp = 0.dp
 ) {
     var showAddCategory by remember { mutableStateOf(false) }
     var showAddQuestion by remember { mutableStateOf(false) }
-    // 长按分类唤起的删除确认目标
+    // “删除分类”按钮唤起的分类选择框
+    var showDeleteCategory by remember { mutableStateOf(false) }
+    // 选中某个分类后的删除确认目标
     var deleteCategoryTarget by remember { mutableStateOf<CategorySummary?>(null) }
     val categories = state.categories
 
@@ -117,7 +122,8 @@ fun QuizOverviewScreen(
             query = state.query,
             onQueryChange = onQueryChange,
             onAddCategory = { showAddCategory = true },
-            onAddQuestion = { showAddQuestion = true }
+            onAddQuestion = { showAddQuestion = true },
+            onDeleteCategory = { showDeleteCategory = true }
         )
 
         when {
@@ -154,7 +160,9 @@ fun QuizOverviewScreen(
                     count = categories.size,
                     columns = 3,
                     cellHeight = 112.dp,
-                    modifier = Modifier.padding(horizontal = 8.dp)
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    // 长按拖动即拼图排序；删除分类改由头部“删除分类”按钮触发，不再依赖长按。
+                    onReorder = onReorderCategory
                 ) { index, shape, contentPadding ->
                     val c = categories[index]
                     WaveFillBlob(
@@ -163,10 +171,7 @@ fun QuizOverviewScreen(
                         shape = shape,
                         modifier = Modifier
                             .fillMaxSize()
-                            .combinedClickable(
-                                onClick = { onOpenCategory(c.name, null) },
-                                onLongClick = { deleteCategoryTarget = c }
-                            )
+                            .clickable { onOpenCategory(c.name, null) }
                     ) {
                         // 仅显示分类名（进度进入分类后可见，无需在拼图上重复）；
                         // 内边距来自 PuzzleGrid，已按每块凹/凸边避让 tab，防止文字被凹口裁掉。
@@ -206,6 +211,13 @@ fun QuizOverviewScreen(
             existingCategories = categories.map { it.name },
             onConfirm = { q, a, cat, diff -> onAddQuestion(q, a, cat, diff); showAddQuestion = false },
             onDismiss = { showAddQuestion = false }
+        )
+    }
+    if (showDeleteCategory) {
+        DeleteCategoryDialog(
+            categories = categories,
+            onSelect = { c -> showDeleteCategory = false; deleteCategoryTarget = c },
+            onDismiss = { showDeleteCategory = false }
         )
     }
     deleteCategoryTarget?.let { target ->
@@ -273,7 +285,8 @@ private fun QuizHeader(
     query: String,
     onQueryChange: (String) -> Unit,
     onAddCategory: () -> Unit,
-    onAddQuestion: () -> Unit
+    onAddQuestion: () -> Unit,
+    onDeleteCategory: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -290,8 +303,8 @@ private fun QuizHeader(
 
         Spacer(Modifier.height(12.dp))
 
-        // 新增分类 / 新增题目 圆角按钮
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // 新增分类 / 新增题目 / 删除分类 圆角按钮
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HeaderActionButton(
                 text = "新增分类",
                 icon = Icons.AutoMirrored.Filled.List,
@@ -304,6 +317,13 @@ private fun QuizHeader(
                 onClick = onAddQuestion,
                 modifier = Modifier.weight(1f)
             )
+            HeaderActionButton(
+                text = "删除分类",
+                icon = Icons.Filled.Delete,
+                onClick = onDeleteCategory,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.weight(1f)
+            )
         }
         Spacer(Modifier.height(4.dp))
     }
@@ -314,7 +334,8 @@ private fun HeaderActionButton(
     text: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    tint: Color = MaterialTheme.colorScheme.primary
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -332,15 +353,16 @@ private fun HeaderActionButton(
             Icon(
                 icon,
                 contentDescription = text,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = tint,
                 modifier = Modifier.size(18.dp)
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
                 text,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = TextPrimary,
+                maxLines = 1
             )
         }
     }
@@ -362,6 +384,67 @@ private fun AddCategoryDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit
         },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name) }) { Text("添加") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
+}
+
+/** 删除分类：列出全部分类供选择，点选某项后进入删除二次确认。 */
+@Composable
+private fun DeleteCategoryDialog(
+    categories: List<CategorySummary>,
+    onSelect: (CategorySummary) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("删除分类") },
+        text = {
+            if (categories.isEmpty()) {
+                Text("暂无可删除的分类", color = TextSecondary)
+            } else {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "选择要删除的分类（将连同其下题目一并删除）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    categories.forEach { c ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, OutlineSoft),
+                            modifier = Modifier.fillMaxWidth().clickable { onSelect(c) }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(categoryColor(c.name))
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(c.name, style = MaterialTheme.typography.bodyLarge, color = TextPrimary, modifier = Modifier.weight(1f))
+                                Text("${c.total} 题", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                                Spacer(Modifier.width(8.dp))
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = "删除 ${c.name}",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
     )
 }
 

@@ -64,7 +64,9 @@ class ToolCallingAgentTest {
 
         val out = agent.run(listOf(ChatMessage(Role.USER, "q")))
 
-        assertEquals("", out)
+        // 超出步数上限且模型仍执意调用工具：返回友好兜底文案（而非空串或裸标记）
+        assertTrue(out.isNotBlank())
+        assertTrue(!out.contains("<"))
         // maxSteps 次循环 + 1 次不带工具的兜底调用
         assertEquals(3, llm.received.size)
         assertTrue(llm.received.last().second.isEmpty()) // 兜底调用不带工具

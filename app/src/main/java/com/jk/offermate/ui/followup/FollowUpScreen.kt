@@ -125,6 +125,13 @@ fun FollowUpScreen(
             listState.animateScrollToItem(messages.size - 1)
         }
     }
+    // 流式生长：最后一条 AI 气泡文本变长时持续贴底（消息条数不变，需单独追踪内容长度）。
+    val lastLen = messages.lastOrNull()?.content?.length ?: 0
+    LaunchedEffect(lastLen) {
+        if (scrollToIndex == null && messages.isNotEmpty()) {
+            listState.scrollToItem(messages.lastIndex)
+        }
+    }
 
     // 是否显示“回到底部”悬浮按钮：最后一条消息未完全可见时显示
     val showScrollDown by remember {
@@ -176,7 +183,9 @@ fun FollowUpScreen(
                     itemsIndexed(messages) { _, message ->
                         MessageBubble(message)
                     }
-                    if (sending) {
+                    // 仅在“尚无 AI 气泡”时显示思考指示：流式首个 token 到达后，
+                    // 最后一条已是正在生长的 AI 气泡，无需再显示“正在思考”。
+                    if (sending && messages.lastOrNull()?.role != Role.ASSISTANT) {
                         item { ThinkingIndicator() }
                     }
                 }

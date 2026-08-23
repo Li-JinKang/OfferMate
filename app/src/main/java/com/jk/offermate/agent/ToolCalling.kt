@@ -29,3 +29,19 @@ sealed interface LlmTurn {
 interface ToolCallingLlm {
     suspend fun chat(messages: List<ChatMessage>, tools: List<ToolSpec>): LlmTurn
 }
+
+/**
+ * 支持**流式**输出的模型端口。与 [ToolCallingLlm.chat] 一轮的语义一致，但最终文本会在生成过程中
+ * 通过 [onDelta] 增量回调（增量为“新增的文本片段”）。
+ *
+ * 约定：若这一轮模型决定调用工具（返回 [LlmTurn.ToolInvocations]），则**不应**回调任何文本增量；
+ * 只有产出最终文本（[LlmTurn.Final]）时才通过 [onDelta] 流式回调。这样上层 agent 可以：工具轮静默执行，
+ * 仅最终答案对用户流式呈现。
+ */
+interface StreamingLlm {
+    suspend fun chatStream(
+        messages: List<ChatMessage>,
+        tools: List<ToolSpec>,
+        onDelta: (String) -> Unit
+    ): LlmTurn
+}

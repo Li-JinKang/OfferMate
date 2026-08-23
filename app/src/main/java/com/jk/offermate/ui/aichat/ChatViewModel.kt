@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -45,12 +46,28 @@ class ChatViewModel(
         (if (questionId == null) flowOf(null) else questionRepository.observeById(questionId))
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val messages: StateFlow<List<ChatMessage>> =
+    private val persistedMessages: StateFlow<List<ChatMessage>> =
         conversationId
             .flatMapLatest { id ->
                 if (id == null) flowOf(emptyList()) else conversationRepository.observeMessages(id)
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 正在流式生成中的 AI 文本（null 表示当前无流式）。 */
+    private val _streaming = MutableStateFlow<String?>(null)
+
+    /**
+     * 供 UI 渲染的消息：在已落库消息之上，追加“正在流式生成”的临时 AI 气泡。
+     * 若最新一条已落库消息内容与流式文本相同（生成完成、已入库），则去重、不重复展示。
+     */
+    val messages: StateFlow<List<ChatMessage>> =
+        combine(persistedMessages, _streaming) { db, streaming ->
+            when {
+                streaming == null -> db
+                db.lastOrNull()?.let { it.role == Role.ASSISTANT && it.content == streaming } == true -> db
+                else -> db + ChatMessage(role = Role.ASSISTANT, content = streaming)
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** 当前会话标题：取自会话记录（首轮对话后由摘要生成）；无标题/无会话时为 null。 */
     val title: StateFlow<String?> =
@@ -81,13 +98,18 @@ class ChatViewModel(
                 // 记录是否为首轮：追加用户消息前历史为空即首轮，用于生成一次性标题。
                 val isFirstRound = conversationRepository.history(convId).isEmpty()
                 conversationRepository.append(convId, Role.USER, content)
-                val reply = followUpService.reply(
+                // 开始流式：置空占位，随 token 到达增量拼接。
+                _streaming.value = ""
+                val reply = followUpService.replyStreaming(
                     context = currentContext(),
                     history = conversationRepository.history(convId)
-                )
+                ) { delta -> _streaming.value = (_streaming.value ?: "") + delta }
+                // 定稿为完整回复（与入库内容一致，供 messages 去重），随后落库。
+                _streaming.value = reply
                 conversationRepository.append(convId, Role.ASSISTANT, reply)
                 runCatching { maybeGenerateTitle(convId, isFirstRound, content, reply) }
             } catch (e: Exception) {
+                _streaming.value = null
                 _error.value = e.message ?: "回复失败，请稍后重试"
             } finally {
                 _sending.value = false

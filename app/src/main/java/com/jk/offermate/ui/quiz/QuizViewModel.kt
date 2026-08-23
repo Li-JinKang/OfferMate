@@ -59,9 +59,10 @@ class QuizViewModel(
         combine(
             questionRepository.observeAll(),
             categoryRepository.observeCategories(),
+            categoryRepository.observeOrder(),
             query,
             results
-        ) { questions, userCategories, q, searchResults ->
+        ) { questions, userCategories, savedOrder, q, searchResults ->
             val groups = questions.groupBy { CategoryResolver.displayCategory(it) }
             val fromQuestions = groups.map { (name, qs) ->
                 CategorySummary(name = name, total = qs.size, practiced = qs.count { it.practiced })
@@ -71,8 +72,14 @@ class QuizViewModel(
                 .filter { it !in groups.keys }
                 .map { CategorySummary(name = it, total = 0, practiced = 0) }
 
+            // 排序：优先按用户自定义顺序（拼图排序）；未在清单中的分类排到其后、按题量降序。
+            val orderIndex = savedOrder.withIndex().associate { (i, name) -> name to i }
+            val categories = (fromQuestions + emptyOnes).sortedWith(
+                compareBy({ orderIndex[it.name] ?: Int.MAX_VALUE }, { -it.total }, { it.name })
+            )
+
             QuizOverviewState(
-                categories = (fromQuestions + emptyOnes).sortedByDescending { it.total },
+                categories = categories,
                 query = q,
                 results = searchResults
             )
@@ -80,6 +87,17 @@ class QuizViewModel(
 
     fun onQueryChange(value: String) {
         query.value = value
+    }
+
+    /**
+     * 拼图排序：把第 [from] 块分类移动到第 [to] 块的位置，并持久化整份新顺序。
+     * 下标以当前展示的分类列表为准。
+     */
+    fun moveCategory(from: Int, to: Int) {
+        val names = uiState.value.categories.map { it.name }
+        if (from !in names.indices || to !in names.indices || from == to) return
+        val reordered = names.toMutableList().apply { add(to, removeAt(from)) }
+        viewModelScope.launch { categoryRepository.saveOrder(reordered) }
     }
 
     fun addCategory(name: String) {

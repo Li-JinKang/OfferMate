@@ -1,8 +1,12 @@
 package com.jk.offermate.agent.chat
 
+import com.jk.offermate.agent.AgentLogger
 import com.jk.offermate.agent.AiClient
 import com.jk.offermate.agent.ChatMessage
+import com.jk.offermate.agent.LlmTurn
+import com.jk.offermate.agent.NoopAgentLogger
 import com.jk.offermate.agent.Role
+import com.jk.offermate.agent.StreamingLlm
 import com.jk.offermate.agent.ToolCallingAgent
 import com.jk.offermate.agent.ToolCallingLlm
 import com.jk.offermate.agent.ToolRegistry
@@ -25,7 +29,8 @@ class FollowUpService(
     private val assembler: ContextAssembler,
     private val toolCallingLlm: ToolCallingLlm? = null,
     private val toolRegistry: ToolRegistry = ToolRegistry(),
-    private val maxSteps: Int = 5
+    private val maxSteps: Int = 15,
+    private val logger: AgentLogger = NoopAgentLogger
 ) {
 
     /** 是否启用工具轮：provider 支持 function-calling 且注册了工具。 */
@@ -54,9 +59,15 @@ class FollowUpService(
             }
         }
         if (toolsEnabled) {
-            append("\n如需结合候选人的简历背景（求职方向、技能、项目经历）作答，按需分级调用工具：\n")
-            append("先 list_memory_profiles 查看有哪些方向记忆并选相关的一份，")
-            append("再 load_profile_overview 看概览，必要时 load_project_detail / load_experience_detail 下钻。\n")
+            append("\n【重要 · 候选人简历】候选人本人的简历信息（求职方向、技能、项目、工作/实习经历）")
+            append("保存在记忆工具里，你的上下文里没有，必须用工具读取，切勿凭空臆测或声称不了解。\n")
+            append("以下情形**必须先调用工具**再作答：\n")
+            append("- 用户问及“我的简历/我的项目/我的经历/我的技能/我的背景/我的求职方向”；\n")
+            append("- 要求点评简历、指出简历可改进之处、结合其项目或经历来回答；\n")
+            append("- 任何需要候选人个人事实才能准确回答的问题。\n")
+            append("调用顺序：先 list_memory_profiles 看有哪些方向记忆并选相关的一份，")
+            append("再 load_profile_overview 看概览，必要时用 load_project_detail / load_experience_detail 下钻具体项目/经历。\n")
+            append("只有在确实读取了相关记忆后，才基于其内容给出针对性的分析与建议。\n")
         }
     }
 
@@ -74,6 +85,35 @@ class FollowUpService(
         context: QuestionContext?,
         history: List<ChatMessage>
     ): String = runTurn(buildMessages(context, history)).trim()
+
+    /**
+     * 流式版 [reply]：最终答案在生成过程中通过 [onDelta] 增量回调（增量为“新增文本片段”）。
+     * 工具轮静默执行，仅最终答案对用户流式呈现；返回完整最终文本（已 trim）。
+     * 底层不支持流式时自动退回非流式，一次性通过 [onDelta] 回调全文。
+     */
+    suspend fun replyStreaming(
+        context: QuestionContext?,
+        history: List<ChatMessage>,
+        onDelta: (String) -> Unit
+    ): String {
+        val messages = buildMessages(context, history)
+        logger.d { "对话(流式)开始：绑定题目=${context != null}，历史=${history.size}，工具轮=$toolsEnabled" }
+        return if (toolsEnabled) {
+            ToolCallingAgent(toolCallingLlm!!, toolRegistry, maxSteps, logger).runStreaming(messages, onDelta).trim()
+        } else {
+            // 无工具轮：优先走流式补全；不支持则退回一次性补全。
+            val streaming = aiClient as? StreamingLlm
+            if (streaming != null) {
+                val turn = streaming.chatStream(messages, emptyList(), onDelta)
+                when (turn) {
+                    is LlmTurn.Final -> turn.text.trim()
+                    is LlmTurn.ToolInvocations -> aiClient.chat(messages).trim().also(onDelta)
+                }
+            } else {
+                aiClient.chat(messages).trim().also(onDelta)
+            }
+        }
+    }
 
     /**
      * 综合整段讨论，产出这道题**更新后的完整参考答案**（Markdown、分点，只含答案正文）。
@@ -117,7 +157,7 @@ class FollowUpService(
     /** 有工具则走 agent 工具轮（模型可按需调用记忆工具），否则退回普通补全。 */
     private suspend fun runTurn(messages: List<ChatMessage>): String =
         if (toolsEnabled) {
-            ToolCallingAgent(toolCallingLlm!!, toolRegistry, maxSteps).run(messages)
+            ToolCallingAgent(toolCallingLlm!!, toolRegistry, maxSteps, logger).run(messages)
         } else {
             aiClient.chat(messages)
         }

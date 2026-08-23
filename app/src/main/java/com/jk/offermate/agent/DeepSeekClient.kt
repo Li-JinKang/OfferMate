@@ -29,14 +29,45 @@ class DeepSeekClient(
     private val apiKeyProvider: suspend () -> String,
     private val modelProvider: suspend () -> String = { AiDefaults.MODEL },
     private val baseUrlProvider: suspend () -> String = { "https://api.deepseek.com/" },
-    private val client: OkHttpClient = defaultClient()
-) : AiClient, ToolCallingLlm {
+    private val client: OkHttpClient = defaultClient(),
+    private val logger: AgentLogger = NoopAgentLogger
+) : AiClient, ToolCallingLlm, StreamingLlm {
 
-    override suspend fun chat(messages: List<ChatMessage>): String =
-        parseContent(post(buildRequestBody(modelProvider(), messages, emptyList())))
+    override suspend fun chat(messages: List<ChatMessage>): String {
+        val model = modelProvider()
+        logger.d { "AI 请求(chat)：model=$model，消息=${messages.size}" }
+        val content = parseContent(post(buildRequestBody(model, messages, emptyList())))
+        logger.d { "AI 响应(chat)：文本 len=${content.length}" }
+        return content
+    }
 
-    override suspend fun chat(messages: List<ChatMessage>, tools: List<ToolSpec>): LlmTurn =
-        parseTurn(post(buildRequestBody(modelProvider(), messages, tools)))
+    override suspend fun chat(messages: List<ChatMessage>, tools: List<ToolSpec>): LlmTurn {
+        val model = modelProvider()
+        logger.d { "AI 请求(tools)：model=$model，消息=${messages.size}，工具=${tools.joinToString { it.name }}" }
+        val turn = parseTurn(post(buildRequestBody(model, messages, tools)))
+        logTurn("tools", turn)
+        return turn
+    }
+
+    override suspend fun chatStream(
+        messages: List<ChatMessage>,
+        tools: List<ToolSpec>,
+        onDelta: (String) -> Unit
+    ): LlmTurn {
+        val model = modelProvider()
+        logger.d { "AI 请求(stream)：model=$model，消息=${messages.size}，工具=${tools.joinToString { it.name }}" }
+        val turn = postStream(buildRequestBody(model, messages, tools, stream = true), onDelta)
+        logTurn("stream", turn)
+        return turn
+    }
+
+    private fun logTurn(via: String, turn: LlmTurn) {
+        when (turn) {
+            is LlmTurn.Final -> logger.d { "AI 响应($via)：最终文本 len=${turn.text.length}" }
+            is LlmTurn.ToolInvocations ->
+                logger.d { "AI 响应($via)：请求调用工具 ${turn.calls.joinToString { "${it.name}${AgentLogger.brief(it.argumentsJson, 120)}" }}" }
+        }
+    }
 
     /** 发送请求，返回原始响应文本；非 2xx 抛 [AiException]。 */
     private suspend fun post(bodyJson: String): String {
@@ -57,15 +88,82 @@ class DeepSeekClient(
             }
         }
         if (code !in 200..299) {
+            logger.w { "AI 调用失败：HTTP $code ${AgentLogger.brief(text, 200)}" }
             throw AiException("DeepSeek 调用失败（HTTP $code）：${text.take(300)}")
         }
         return text
     }
 
-    internal fun buildRequestBody(model: String, messages: List<ChatMessage>, tools: List<ToolSpec>): String {
+    /**
+     * 发起流式请求（SSE）：逐行读取 `data:` 事件，文本增量经 [StreamingTextBuffer] 安全透出，
+     * 工具调用增量按 index 拼接。返回一轮的最终结果（工具调用或最终文本）。
+     */
+    private suspend fun postStream(bodyJson: String, onDelta: (String) -> Unit): LlmTurn {
+        val apiKey = apiKeyProvider().trim()
+        if (apiKey.isEmpty()) throw AiException("未配置 API Key，请在设置中填写")
+
+        val endpoint = baseUrlProvider().trim().trimEnd('/') + "/chat/completions"
+        val request = Request.Builder()
+            .url(endpoint)
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .header("Accept", "text/event-stream")
+            .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        val buffer = StreamingTextBuffer(onDelta)
+        val toolAcc = ToolCallAccumulator()
+
+        withContext(Dispatchers.IO) {
+            client.newCall(request).execute().use { resp ->
+                if (resp.code !in 200..299) {
+                    val err = resp.body?.string().orEmpty()
+                    logger.w { "AI 流式调用失败：HTTP ${resp.code} ${AgentLogger.brief(err, 200)}" }
+                    throw AiException("DeepSeek 调用失败（HTTP ${resp.code}）：${err.take(300)}")
+                }
+                val source = resp.body?.source() ?: throw AiException("DeepSeek 流式响应为空")
+                while (true) {
+                    val line = source.readUtf8Line() ?: break
+                    if (line.isBlank()) continue
+                    if (!line.startsWith("data:")) continue
+                    val data = line.substring(5).trim()
+                    if (data == "[DONE]") break
+                    consumeChunk(data, buffer, toolAcc)
+                }
+            }
+        }
+
+        // 结构化 tool_calls 优先；否则看流式文本里是否为内联工具标记。
+        toolAcc.build()?.let { if (it.isNotEmpty()) return LlmTurn.ToolInvocations(it) }
+        val raw = buffer.finish()
+        if (InlineToolCallParser.containsMarkup(raw)) {
+            val inline = InlineToolCallParser.parse(raw)
+            if (inline.isNotEmpty()) return LlmTurn.ToolInvocations(inline)
+        }
+        buffer.flushRemaining()
+        return LlmTurn.Final(InlineToolCallParser.strip(raw))
+    }
+
+    /** 解析单个 SSE data chunk，把 delta.content 喂给缓冲、delta.tool_calls 累积到 [toolAcc]。 */
+    private fun consumeChunk(data: String, buffer: StreamingTextBuffer, toolAcc: ToolCallAccumulator) {
+        val delta = runCatching {
+            JsonSupport.json.parseToJsonElement(data).jsonObject["choices"]?.jsonArray
+                ?.firstOrNull()?.jsonObject?.get("delta")?.jsonObject
+        }.getOrNull() ?: return
+
+        delta["content"]?.jsonPrimitive?.contentOrNull?.let { buffer.append(it) }
+        delta["tool_calls"]?.jsonArray?.forEach { toolAcc.accumulate(it.jsonObject) }
+    }
+
+    internal fun buildRequestBody(
+        model: String,
+        messages: List<ChatMessage>,
+        tools: List<ToolSpec>,
+        stream: Boolean = false
+    ): String {
         val obj = buildJsonObject {
             put("model", model)
-            put("stream", false)
+            put("stream", stream)
             // 显式拉高输出上限：默认 4096 容易在多题长答案时被截断导致 JSON 不完整。
             put("max_tokens", MAX_OUTPUT_TOKENS)
             putJsonArray("messages") { messages.forEach { serializeMessage(it) } }
@@ -131,7 +229,16 @@ class DeepSeekClient(
             }
             if (calls.isNotEmpty()) return LlmTurn.ToolInvocations(calls)
         }
-        return LlmTurn.Final(message["content"]?.jsonPrimitive?.contentOrNull.orEmpty())
+
+        val content = message["content"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        // 兜底：部分模型/代理把工具调用当作文本吐进 content（<invoke .../> 伪标记）。
+        // 结构化 tool_calls 缺失时尝试从文本解析，避免裸标记直接展示给用户。
+        if (InlineToolCallParser.containsMarkup(content)) {
+            val inline = InlineToolCallParser.parse(content)
+            if (inline.isNotEmpty()) return LlmTurn.ToolInvocations(inline)
+        }
+        // 即便未识别为工具调用，也剔除可能残留的标记再作为最终文本返回。
+        return LlmTurn.Final(InlineToolCallParser.strip(content))
     }
 
     private fun firstMessage(raw: String) = run {
@@ -157,8 +264,10 @@ class DeepSeekClient(
             ?: throw AiException("DeepSeek 响应缺少 choices：${raw.take(200)}")
         val first = choices.firstOrNull()?.jsonObject
             ?: throw AiException("DeepSeek 响应 choices 为空")
-        return first["message"]?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
+        val content = first["message"]?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
             ?: throw AiException("DeepSeek 响应缺少 message.content")
+        // 普通补全也可能混入内联工具标记（无工具轮时），剔除后再返回。
+        return InlineToolCallParser.strip(content).ifEmpty { content }
     }
 
     private companion object {

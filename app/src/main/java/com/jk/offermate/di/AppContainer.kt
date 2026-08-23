@@ -3,6 +3,7 @@ package com.jk.offermate.di
 import android.content.Context
 import androidx.room.Room
 import com.jk.offermate.agent.AiClient
+import com.jk.offermate.agent.AndroidAgentLogger
 import com.jk.offermate.agent.AnalysisPipeline
 import com.jk.offermate.agent.AnswerGenerator
 import com.jk.offermate.agent.CategoryClassifier
@@ -34,6 +35,7 @@ import com.jk.offermate.data.reader.HtmlContentExtractor
 import com.jk.offermate.data.reader.OkHttpHtmlFetcher
 import com.jk.offermate.data.reader.OkHttpUrlResolver
 import com.jk.offermate.data.reader.WebViewContentReader
+import com.jk.offermate.data.repository.CategoryOrderStore
 import com.jk.offermate.data.repository.CategoryRepository
 import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
@@ -101,7 +103,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val categoryRepository: CategoryRepository by lazy {
-        RoomCategoryRepository(database.categoryDao())
+        RoomCategoryRepository(database.categoryDao(), CategoryOrderStore(context))
     }
 
     override val conversationRepository: ConversationRepository by lazy {
@@ -134,7 +136,8 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             modelProvider = { settingsRepository.activeConfig.first().model },
             baseUrlProvider = {
                 settingsRepository.activeConfig.first().baseUrl.ifBlank { com.jk.offermate.data.settings.AiProvider.DEEPSEEK.baseUrl }
-            }
+            },
+            logger = AndroidAgentLogger
         )
     }
 
@@ -193,7 +196,8 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
                 TokenWindowMemory(maxTokens = 3000, estimator = HeuristicTokenEstimator())
             ),
             toolCallingLlm = toolCallingLlm,
-            toolRegistry = sharedToolRegistry
+            toolRegistry = sharedToolRegistry,
+            logger = AndroidAgentLogger
         )
     }
 

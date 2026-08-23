@@ -34,8 +34,10 @@ private fun argString(argumentsJson: String, key: String): String? = runCatching
 class ListMemoryProfilesTool(private val store: MemoryStore) : Tool {
     override val spec = ToolSpec(
         name = "list_memory_profiles",
-        description = "列出候选人的全部求职方向记忆（如 Java 后端、Android）。先调用它了解有哪些记忆，" +
-            "再按当前题目相关性选择一份，用 load_profile_overview 加载其概览。",
+        description = "读取候选人本人的简历记忆入口。这里存放着候选人的**简历信息**——按求职方向组织" +
+            "（如 Java 后端、Android），每份含技能、项目、工作/实习经历等。凡是涉及候选人本人的简历、" +
+            "背景、技能、项目、经历、求职方向，或需要“结合我的简历/项目”作答、点评简历、给改进建议时，" +
+            "都应**先调用本工具**看有哪些方向记忆，再用 load_profile_overview 加载相关一份的概览。无参数。",
         parametersJson = """{"type":"object","properties":{}}"""
     )
 
@@ -56,9 +58,9 @@ class LoadProfileOverviewTool(
 ) : Tool {
     override val spec = ToolSpec(
         name = "load_profile_overview",
-        description = "加载指定方向记忆的概览：技能清单 + 项目/经历简介，附带通用事实（年限/学历等）。" +
-            "profileId 取自 list_memory_profiles。可传 query 关键词仅返回相关行。" +
-            "若需某个项目/经历的细节，再用 load_project_detail / load_experience_detail。",
+        description = "加载候选人某个求职方向的**简历概览**：技能清单 + 项目/经历简介，附带通用事实（年限/学历等）。" +
+            "这是了解候选人简历内容的主要入口。profileId 取自 list_memory_profiles。可传 query 关键词仅返回相关行。" +
+            "若要点评/改进某个具体项目或经历，再用 load_project_detail / load_experience_detail 下钻全文。",
         parametersJson = """
             {"type":"object","properties":{
               "profileId":{"type":"string","description":"方向记忆 id"},
@@ -110,7 +112,7 @@ abstract class DetailTool(
 
     protected fun detailSpec() = ToolSpec(
         name = toolName,
-        description = "加载指定方向记忆下某个${label}的详细内容（背景/职责/技术栈/难点/亮点）。" +
+        description = "加载候选人简历里某个${label}的详细内容（背景/职责/技术栈/难点/亮点），用于深入点评或结合作答。" +
             "profileId 与 $itemIdParam 取自 load_profile_overview 的概览列表。",
         parametersJson = """
             {"type":"object","properties":{

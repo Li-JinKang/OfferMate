@@ -14,7 +14,7 @@ class AnswerGenerator(
     private val aiClient: AiClient,
     private val toolCallingLlm: ToolCallingLlm? = null,
     private val toolRegistry: ToolRegistry = ToolRegistry(),
-    private val maxSteps: Int = 5
+    private val maxSteps: Int = 15
 ) {
 
     private val toolsEnabled: Boolean

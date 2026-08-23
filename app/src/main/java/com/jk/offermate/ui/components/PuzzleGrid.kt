@@ -1,17 +1,28 @@
 package com.jk.offermate.ui.components
 
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 
 /**
@@ -24,6 +35,10 @@ fun PuzzleGrid(
     columns: Int = 2,
     cellHeight: Dp = 132.dp,
     modifier: Modifier = Modifier,
+    // 非空则开启「拼图排序」：长按某块拖动，松手时回调 (from, to) 让上层重排并持久化。
+    onReorder: ((from: Int, to: Int) -> Unit)? = null,
+    // 长按但几乎未移动时回调该块下标（兼容原「长按删除」等操作，与拖动排序共用长按手势）。
+    onLongPress: ((index: Int) -> Unit)? = null,
     // contentPadding：为该块内容预留的安全内边距——已避开四周 tab（body 偏移 + 凹口深度），
     // 凹边侧额外多留一个 tab 深度，防止文字探进凹口被形状裁掉。调用方直接 padding(it) 即可。
     piece: @Composable (index: Int, shape: Shape, contentPadding: PaddingValues) -> Unit
@@ -36,6 +51,23 @@ fun PuzzleGrid(
         val cellW = (maxWpx - 2 * tab) / columns
         val cellH = with(density) { cellHeight.toPx() }
         val rows = (count + columns - 1) / columns
+
+        // 拖拽排序状态：当前被拖动的块下标与累计位移（px）。松手时按块中心落点算目标槽位。
+        var draggingIndex by remember { mutableStateOf<Int?>(null) }
+        var dragOffset by remember { mutableStateOf(Offset.Zero) }
+        // 长按未移动的判定阈值：小于它视为“长按”（触发 onLongPress），否则视为“拖动排序”。
+        val moveThresholdPx = with(density) { 12.dp.toPx() }
+        val gestureEnabled = onReorder != null || onLongPress != null
+
+        fun targetIndexOf(from: Int, offset: Offset): Int {
+            val r0 = from / columns
+            val c0 = from % columns
+            val centerX = c0 * cellW + tab + cellW / 2f + offset.x
+            val centerY = r0 * cellH + tab + cellH / 2f + offset.y
+            val col = ((centerX - tab) / cellW).toInt().coerceIn(0, columns - 1)
+            val row = ((centerY - tab) / cellH).toInt().coerceIn(0, rows - 1)
+            return (row * columns + col).coerceIn(0, count - 1)
+        }
 
         // 内部边随机凸/凹（确定性）；边界为平边。
         val rightEdge = Array(rows) { r -> IntArray(columns) { c -> if (c == columns - 1) 0 else edgeRand(r, c, 1) } }
@@ -67,7 +99,56 @@ fun PuzzleGrid(
                         end = sidePad(right),
                         bottom = sidePad(bottom)
                     )
-                    piece(i, puzzlePiecePath(cellW, cellH, tab, top, right, bottom, left), pad)
+                    val shape = puzzlePiecePath(cellW, cellH, tab, top, right, bottom, left)
+                    key(i) {
+                        val isDragging = draggingIndex == i
+                        val dragModifier = if (gestureEnabled) {
+                            Modifier.pointerInput(count) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        draggingIndex = i
+                                        dragOffset = Offset.Zero
+                                    },
+                                    onDrag = { change, delta ->
+                                        change.consume()
+                                        dragOffset += delta
+                                    },
+                                    onDragEnd = {
+                                        val moved = dragOffset.getDistance()
+                                        val target = targetIndexOf(i, dragOffset)
+                                        draggingIndex = null
+                                        dragOffset = Offset.Zero
+                                        when {
+                                            // 长按几乎未移动 → 视为长按操作（如删除）
+                                            moved < moveThresholdPx -> onLongPress?.invoke(i)
+                                            target != i -> onReorder?.invoke(i, target)
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        draggingIndex = null
+                                        dragOffset = Offset.Zero
+                                    }
+                                )
+                            }
+                        } else {
+                            Modifier
+                        }
+                        Box(
+                            modifier = dragModifier
+                                .zIndex(if (isDragging) 1f else 0f)
+                                .graphicsLayer {
+                                    if (isDragging) {
+                                        translationX = dragOffset.x
+                                        translationY = dragOffset.y
+                                        scaleX = 1.06f
+                                        scaleY = 1.06f
+                                        alpha = 0.92f
+                                    }
+                                }
+                        ) {
+                            piece(i, shape, pad)
+                        }
+                    }
                 }
             }
         ) { measurables, _ ->
