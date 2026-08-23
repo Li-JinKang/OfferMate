@@ -142,10 +142,10 @@ fun FollowUpScreen(
         }
     }
 
-    // 底部是否有常驻/临时的附加元素（错误提示 / 通知 / 更新答案入口）。
-    // 有则让它们悬浮在 dock 之上；无则让消息列表铺到屏幕底部、内容从透明 dock 下方穿过（与首页一致）。
-    val hasBottomExtras = error != null || notice != null ||
-        (question != null && messages.any { it.role == Role.ASSISTANT })
+    // “用本轮讨论更新答案”入口：仅绑定题目（追问）的会话才有。
+    val showUpdateButton = question != null && messages.any { it.role == Role.ASSISTANT }
+    // 更新答案悬浮条为消息列表额外预留的底部空间，避免最后一条消息被它盖住。
+    val updateButtonReserve = if (showUpdateButton) 52.dp else 0.dp
 
     Column(
         Modifier
@@ -182,13 +182,13 @@ fun FollowUpScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    // 底部留白：无附加元素时为悬浮 dock 预留空间（内容可滚动穿过其下方）；
-                    // 有附加元素时它们自己已避让 dock，这里只留常规内边距。
+                    // 底部留白：为悬浮 dock（+ 追问时的更新答案悬浮条）预留空间，
+                    // 让内容可滚动穿过它们下方，而不是被截断在容器里。
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         end = 16.dp,
                         top = 16.dp,
-                        bottom = 16.dp + if (hasBottomExtras) 0.dp else contentBottomPadding
+                        bottom = 16.dp + contentBottomPadding + updateButtonReserve
                     ),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
@@ -203,29 +203,35 @@ fun FollowUpScreen(
                 }
             }
 
-            // 回到底部悬浮按钮（避让悬浮 dock）
+            // 回到底部悬浮按钮（避让悬浮 dock 与更新答案悬浮条）
             if (showScrollDown) {
                 Box(
                     Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 12.dp + contentBottomPadding)
+                        .padding(end = 16.dp, bottom = 12.dp + contentBottomPadding + updateButtonReserve)
                 ) {
                     ScrollToBottomButton {
                         scope.launch { listState.animateScrollToItem(messages.lastIndex) }
                     }
                 }
             }
-        }
 
-        // 底部附加元素统一避让悬浮 dock：整体下移 contentBottomPadding，悬浮在 dock 之上。
-        if (hasBottomExtras) {
-            Column(Modifier.fillMaxWidth().padding(bottom = contentBottomPadding)) {
+            // 底部附加元素作为**悬浮 overlay** 叠在消息之上、避让 dock：
+            // 消息可从其下方滚动穿过，不再形成“坐在容器上”的实心底栏。
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = contentBottomPadding),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 error?.let {
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp)
+                        color = MaterialTheme.colorScheme.error
                     )
                     LaunchedEffect(it) {
                         kotlinx.coroutines.delay(4000)
@@ -236,23 +242,19 @@ fun FollowUpScreen(
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 16.dp)
+                        color = MaterialTheme.colorScheme.primary
                     )
                     LaunchedEffect(it) {
                         kotlinx.coroutines.delay(3000)
                         onConsumeNotice()
                     }
                 }
-
-                // 更新答案入口（仅绑定题目的会话才有）
-                if (question != null && messages.any { it.role == Role.ASSISTANT }) {
+                if (showUpdateButton) {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = IndigoContainer,
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .clickable(enabled = !sending, onClick = onUpdateAnswer)
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.clickable(enabled = !sending, onClick = onUpdateAnswer)
                     ) {
                         Text(
                             "用本轮讨论更新答案",
@@ -261,11 +263,12 @@ fun FollowUpScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
-                    Spacer(Modifier.height(4.dp))
                 }
             }
         }
-        // 底部输入胶囊已上提到 app 级常驻 dock（见 BottomDock），此处不再渲染。
+
+        // 底部附加元素（错误/通知/更新答案）已作为悬浮 overlay 叠在消息区之上（见上方 Box 内）。
+        // 底部输入胶囊则上提到 app 级常驻 dock（见 BottomDock），此处不再渲染。
     }
 }
 
