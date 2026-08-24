@@ -37,7 +37,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
 import com.jk.offermate.ui.theme.TextSecondary
 
 /**

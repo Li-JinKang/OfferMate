@@ -1,5 +1,8 @@
 package com.jk.offermate.agent
 
+import com.jk.offermate.agent.tool.LlmTurn
+import com.jk.offermate.agent.tool.ToolCall
+import com.jk.offermate.agent.tool.ToolSpec
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse

@@ -1,7 +1,7 @@
 package com.jk.offermate.agent.mcp
 
-import com.jk.offermate.agent.Tool
-import com.jk.offermate.agent.ToolSpec
+import com.jk.offermate.agent.tool.Tool
+import com.jk.offermate.agent.tool.ToolSpec
 
 /**
  * 把一个 MCP 服务器工具适配为本地 [Tool]，从而能与本地工具一样进入同一个工具轮。

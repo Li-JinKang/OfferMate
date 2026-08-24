@@ -1,6 +1,6 @@
 package com.jk.offermate.data.importer
 
-import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
 import com.jk.offermate.data.reader.PostContent
 
 /** 一次"导入并分析"的结果。 */

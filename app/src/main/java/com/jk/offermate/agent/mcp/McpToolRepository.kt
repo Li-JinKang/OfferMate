@@ -1,6 +1,6 @@
 package com.jk.offermate.agent.mcp
 
-import com.jk.offermate.agent.Tool
+import com.jk.offermate.agent.tool.Tool
 
 /**
  * 发现并缓存所有已配置 MCP 服务器的工具，向工具轮暴露为本地 [Tool] 列表。

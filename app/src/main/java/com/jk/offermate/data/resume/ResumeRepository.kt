@@ -1,6 +1,6 @@
 package com.jk.offermate.data.resume
 
-import com.jk.offermate.agent.ResumeProfile
+import com.jk.offermate.agent.resume.ResumeProfile
 import kotlinx.coroutines.flow.Flow
 
 /**

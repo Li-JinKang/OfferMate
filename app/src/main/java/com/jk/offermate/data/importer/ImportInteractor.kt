@@ -1,9 +1,9 @@
 package com.jk.offermate.data.importer
 
 import com.jk.offermate.agent.AiException
-import com.jk.offermate.agent.AnsweredQuestion
-import com.jk.offermate.agent.PostAnalyzer
-import com.jk.offermate.agent.QuestionCategorizer
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.PostAnalyzer
+import com.jk.offermate.agent.pipeline.QuestionCategorizer
 import com.jk.offermate.data.ocr.OcrTextRecognizer
 import com.jk.offermate.data.reader.ContentReader
 import com.jk.offermate.data.reader.ExtractionMethod

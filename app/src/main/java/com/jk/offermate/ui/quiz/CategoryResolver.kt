@@ -1,6 +1,6 @@
 package com.jk.offermate.ui.quiz
 
-import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
 
 /**
  * 题库分组用的分类解析：分类由 LLM（[com.jk.offermate.agent.QuestionCategorizer]）决定并写入

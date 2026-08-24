@@ -1,8 +1,8 @@
 package com.jk.offermate.data.local
 
-import com.jk.offermate.agent.AnsweredQuestion
-import com.jk.offermate.agent.Difficulty
-import com.jk.offermate.agent.QuestionSource
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.Difficulty
+import com.jk.offermate.agent.pipeline.QuestionSource
 import com.jk.offermate.data.dedup.QuestionDeduplicator
 import com.jk.offermate.data.local.entity.ImportedPostEntity
 import com.jk.offermate.data.local.entity.QuestionEntity

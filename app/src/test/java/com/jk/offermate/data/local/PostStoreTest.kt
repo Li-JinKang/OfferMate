@@ -1,6 +1,6 @@
 package com.jk.offermate.data.local
 
-import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
 import com.jk.offermate.data.local.dao.FingerprintRow
 import com.jk.offermate.data.local.dao.ImportedPostDao
 import com.jk.offermate.data.local.dao.QuestionDao

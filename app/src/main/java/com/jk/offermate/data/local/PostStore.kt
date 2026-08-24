@@ -1,6 +1,6 @@
 package com.jk.offermate.data.local
 
-import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
 import com.jk.offermate.data.dedup.QuestionDeduplicator
 import com.jk.offermate.data.dedup.QuestionFingerprint
 import com.jk.offermate.data.importer.PlatformDetector

@@ -1,12 +1,12 @@
 package com.jk.offermate.data.importer
 
 import com.jk.offermate.agent.AiException
-import com.jk.offermate.agent.AnalysisPipeline
-import com.jk.offermate.agent.AnswerGenerator
+import com.jk.offermate.agent.pipeline.AnalysisPipeline
+import com.jk.offermate.agent.pipeline.AnswerGenerator
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.FakeAiClient
-import com.jk.offermate.agent.QuestionExtractor
-import com.jk.offermate.agent.RelevanceMatcher
+import com.jk.offermate.agent.pipeline.QuestionExtractor
+import com.jk.offermate.agent.pipeline.RelevanceMatcher
 import com.jk.offermate.data.reader.ContentReader
 import com.jk.offermate.data.reader.DynamicContentReader
 import com.jk.offermate.data.reader.HtmlContentExtractor

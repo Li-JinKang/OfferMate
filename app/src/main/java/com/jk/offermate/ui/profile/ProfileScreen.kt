@@ -52,7 +52,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.Bitmap
 import com.jk.offermate.R
-import com.jk.offermate.agent.ResumeProfile
+import com.jk.offermate.agent.resume.ResumeProfile
 import com.jk.offermate.data.memory.DetailKind
 import com.jk.offermate.data.resume.PdfPageRenderer
 import com.jk.offermate.data.settings.AiProvider
