@@ -24,8 +24,8 @@ class QuestionExtractor(private val aiClient: AiClient) {
         ChatMessage(
             role = Role.SYSTEM,
             content = """
-                你是一名面试题抽取助手。用户会给你一段"面经"帖子的正文，
-                其中可能混杂流程吐槽、寒暄、无关内容。请从中**只抽取真正的面试题目**。
+                你需要从用户给出的一段"面经"帖子的正文中抽取**真正的面试题目**
+                其中可能混杂流程吐槽、寒暄、无关内容。
                 严格要求：
                 1. 仅输出 JSON，不要输出任何解释或额外文字。
                 2. JSON 结构为：{"questions":[{"question":"题目","tags":["考点"],"source":"原文出处片段"}]}。

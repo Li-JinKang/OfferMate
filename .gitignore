@@ -11,3 +11,8 @@ local.properties
 
 # Kotlin 编译器会话缓存
 .kotlin/
+
+# 发布签名配置（含 keystore 密码，禁止入库）
+/keystore.properties
+*.keystore
+*.jks

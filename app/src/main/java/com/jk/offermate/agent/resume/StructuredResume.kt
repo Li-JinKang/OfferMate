@@ -23,7 +23,7 @@ data class StructuredResume(
 )
 
 /**
- * 一个可下钻的细节条目（项目或经历）。
+ * 一个可继续加载的细节条目（项目或经历）。
  *
  * @param id     细节文件名 slug（如 "order-system"）
  * @param title  展示标题

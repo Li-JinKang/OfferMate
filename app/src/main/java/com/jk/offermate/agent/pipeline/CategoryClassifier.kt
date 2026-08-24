@@ -29,16 +29,16 @@ class CategoryClassifier(private val aiClient: AiClient) : QuestionCategorizer {
         val questionBlock = questions.mapIndexed { i, q -> "$i. ${q.question}" }.joinToString("\n")
 
         val system = """
-            你是面试题分类助手。请为每道题目归入一个**粗粒度**类目。
+            你需要为每道题目归入一个**粗粒度**分类。
             规则：
-            1. **优先复用**下方"已有类目"中的名称，保持一致，不要造近义词。
-            2. 只有当没有任何已有类目合适时，才新建一个**简洁**的新类目（如 Android、Java、Kotlin、计算机网络、操作系统、数据结构与算法、数据库、系统设计）。
+            1. **优先复用**下方"已有分类"中的名称，保持一致。
+            2. 只有当没有任何已有分类合适时，才新建一个**简洁**的新类目（如 Android、Java、Kotlin、计算机网络、操作系统、数据结构与算法、数据库、系统设计）。
             3. 避免过细：如 Handler、SharedPreferences、自定义 View 都应归入 Android；HashMap、JVM 归入 Java。
             4. 每道题只给一个类目。
         """.trimIndent()
 
         val user = buildString {
-            append("已有类目：").append(catLine).append("\n\n")
+            append("已有分类：").append(catLine).append("\n\n")
             append("题目：\n").append(questionBlock).append("\n\n")
             append("只输出 JSON 数组：[{\"index\":0,\"category\":\"类目名\"}, ...]")
         }

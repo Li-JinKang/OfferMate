@@ -23,7 +23,7 @@ class ResumeStructurer(private val aiClient: AiClient) {
         ChatMessage(
             role = Role.SYSTEM,
             content = """
-                你是简历结构化助手。用户会给你一份简历原文，请抽取为结构化 JSON。
+                你需要从用户给出的一份简历原文中抽取为结构化 JSON。
                 严格要求：
                 1. 仅输出 JSON，不要任何解释或额外文字。
                 2. 结构：
@@ -31,7 +31,7 @@ class ResumeStructurer(private val aiClient: AiClient) {
                   "id": "英文小写短横线 slug，概括求职方向，如 java-backend / android",
                   "name": "方向的中文展示名，如 Java 后端",
                   "targetRole": "目标岗位，如 Java 后端开发工程师",
-                  "summary": "一句话概括候选人（含年限与核心技能）",
+                  "summary": "一句话概括用户（含年限与核心技能）",
                   "skills": ["技能1", "技能2"],
                   "globalFacts": ["工作年限: 3 年", "学历: 本科", "语言: 中/英"],
                   "projects": [{"id":"英文slug","title":"项目名","brief":"一句话简介","detail":"背景/职责/技术栈/难点/亮点，多行"}],
