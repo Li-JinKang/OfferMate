@@ -9,6 +9,16 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// 发布签名配置：从项目根目录 keystore.properties 读取（该文件不入库，见 .gitignore）。
+// 本地没有该文件时（如 CI 未配置、或仅需 debug 构建）不会报错，release 签名相关配置会被跳过，
+// 此时 assembleRelease 产出未签名包。
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+def hasReleaseSigning = keystorePropertiesFile.exists()
+if (hasReleaseSigning) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace 'com.jk.offermate'
     compileSdk 35
@@ -23,12 +33,26 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
             // R8：开启代码混淆/优化 + 资源压缩，缩小包体
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
         debug {
             // 调试构建保持不混淆，便于定位问题

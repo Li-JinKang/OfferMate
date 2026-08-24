@@ -39,15 +39,15 @@ class FollowUpService(
 
     /**
      * 对话 system 上下文。[context] 为空时是**自由对话**（不绑定题目）；非空时附带该题与当前答案。
-     * 两种情况都会带上候选人画像；简历细节按需用工具拉取。
+     * 两种情况都会带上用户画像；简历细节按需用工具拉取。
      */
     fun systemContext(context: QuestionContext?): String = buildString {
         if (context == null) {
-            append("你是一名资深面试辅导老师，正在与候选人进行面试相关的自由问答与讨论。\n")
+            append("你需要与用户进行面试相关的自由问答与讨论。\n")
             append("请针对其问题给出准确、有条理的解答。\n")
             append("使用 Markdown、分点作答，关键术语用 **加粗**，代码/类名用 `反引号`。\n")
         } else {
-            append("你是一名资深面试辅导老师，正在就下面这道面试题与候选人进行**追问讨论**。\n")
+            append("你正在就下面这道面试题与用户进行**追问讨论**。\n")
             append("请结合已有参考答案，针对其追问给出准确、有条理的解答。\n")
             append("使用 Markdown、分点作答，关键术语用 **加粗**，代码/类名用 `反引号`。\n\n")
             append("【题目】\n").append(context.question).append("\n")
@@ -59,14 +59,12 @@ class FollowUpService(
             }
         }
         if (toolsEnabled) {
-            append("\n【重要 · 候选人简历】候选人本人的简历信息（求职方向、技能、项目、工作/实习经历）")
+            append("\n【重要 · 用户简历】用户本人的简历信息（求职方向、技能、项目、工作/实习经历）")
             append("保存在记忆工具里，你的上下文里没有，必须用工具读取，切勿凭空臆测或声称不了解。\n")
             append("以下情形**必须先调用工具**再作答：\n")
-            append("- 用户问及“我的简历/我的项目/我的经历/我的技能/我的背景/我的求职方向”；\n")
-            append("- 要求点评简历、指出简历可改进之处、结合其项目或经历来回答；\n")
-            append("- 任何需要候选人个人事实才能准确回答的问题。\n")
+            append("- 任何需要用户个人事实才能准确回答的问题。\n")
             append("调用顺序：先 list_memory_profiles 看有哪些方向记忆并选相关的一份，")
-            append("再 load_profile_overview 看概览，必要时用 load_project_detail / load_experience_detail 下钻具体项目/经历。\n")
+            append("再 load_profile_overview 看概览，必要时用 load_project_detail / load_experience_detail 继续加载具体项目/经历。\n")
             append("只有在确实读取了相关记忆后，才基于其内容给出针对性的分析与建议。\n")
         }
     }

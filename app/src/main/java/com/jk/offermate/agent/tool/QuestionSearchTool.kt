@@ -8,7 +8,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * 本地工具：按关键词搜索候选人**已有题库**（题干/答案/标签/考点/分类任一命中）。
+ * 本地工具：按关键词搜索用户**已有题库**（题干/答案/标签/考点/分类任一命中）。
  *
  * 让模型能自主"翻阅题库"——例如自由对话时先查是否已有相关题目及其参考答案，
  * 或作答/相关性判断时参考同类历史题。通过 [search] 注入数据来源，与存储解耦、便于测试。
@@ -21,8 +21,8 @@ class QuestionSearchTool(
 
     override val spec = ToolSpec(
         name = "search_questions",
-        description = "在候选人已有的面试题库中按关键词检索题目（匹配题干/答案/考点/分类）。" +
-            "用于查阅是否已有相关题目及其参考答案、了解候选人已积累的考点。返回题目及其答案摘要。",
+        description = "在用户已有的面试题库中按关键词检索题目（匹配题干/答案/考点/分类）。" +
+            "用于查阅是否已有相关题目及其参考答案、了解用户已积累的考点。返回题目及其答案摘要。",
         parametersJson = """
             {"type":"object","properties":{"query":{"type":"string","description":"检索关键词，如某个技术点/公司/考点"},"limit":{"type":"integer","description":"最多返回条数，默认 $defaultLimit"}},"required":["query"]}
         """.trimIndent()
