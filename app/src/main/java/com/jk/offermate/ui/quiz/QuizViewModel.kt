@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.jk.offermate.agent.AnsweredQuestion
-import com.jk.offermate.agent.Difficulty
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.Difficulty
 import com.jk.offermate.data.repository.CategoryRepository
 import com.jk.offermate.data.repository.QuestionRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi

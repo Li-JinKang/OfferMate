@@ -2,12 +2,12 @@ package com.jk.offermate.agent.chat
 
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.FakeAiClient
-import com.jk.offermate.agent.FakeToolCallingLlm
-import com.jk.offermate.agent.LlmTurn
 import com.jk.offermate.agent.Role
-import com.jk.offermate.agent.ToolCall
-import com.jk.offermate.agent.ToolRegistry
-import com.jk.offermate.agent.memoryTools
+import com.jk.offermate.agent.tool.FakeToolCallingLlm
+import com.jk.offermate.agent.tool.LlmTurn
+import com.jk.offermate.agent.tool.ToolCall
+import com.jk.offermate.agent.tool.ToolRegistry
+import com.jk.offermate.agent.tool.memoryTools
 import com.jk.offermate.data.memory.MemoryProfileEntry
 import com.jk.offermate.data.memory.MemoryStore
 import kotlinx.coroutines.test.runTest

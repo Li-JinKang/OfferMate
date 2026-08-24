@@ -3,13 +3,13 @@ package com.jk.offermate.agent.chat
 import com.jk.offermate.agent.AgentLogger
 import com.jk.offermate.agent.AiClient
 import com.jk.offermate.agent.ChatMessage
-import com.jk.offermate.agent.LlmTurn
 import com.jk.offermate.agent.NoopAgentLogger
 import com.jk.offermate.agent.Role
-import com.jk.offermate.agent.StreamingLlm
-import com.jk.offermate.agent.ToolCallingAgent
-import com.jk.offermate.agent.ToolCallingLlm
-import com.jk.offermate.agent.ToolRegistry
+import com.jk.offermate.agent.tool.LlmTurn
+import com.jk.offermate.agent.tool.StreamingLlm
+import com.jk.offermate.agent.tool.ToolCallingAgent
+import com.jk.offermate.agent.tool.ToolCallingLlm
+import com.jk.offermate.agent.tool.ToolRegistry
 
 /** 一道题的追问上下文。 */
 data class QuestionContext(

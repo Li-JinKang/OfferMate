@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.jk.offermate.agent.ResumeProfile
+import com.jk.offermate.agent.resume.ResumeProfile
 import com.jk.offermate.data.memory.ResumeIngestor
 import com.jk.offermate.data.resume.ResumeFileStore
 import com.jk.offermate.data.resume.ResumeRepository

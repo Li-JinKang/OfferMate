@@ -1,6 +1,6 @@
 package com.jk.offermate.agent.mcp
 
-import com.jk.offermate.agent.ToolRegistry
+import com.jk.offermate.agent.tool.ToolRegistry
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

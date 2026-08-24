@@ -1,6 +1,6 @@
 package com.jk.offermate.ui.quiz
 
-import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

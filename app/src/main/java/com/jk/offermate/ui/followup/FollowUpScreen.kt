@@ -65,7 +65,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.Role
 import com.jk.offermate.data.local.entity.ConversationEntity

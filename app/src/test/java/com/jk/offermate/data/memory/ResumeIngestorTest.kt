@@ -1,8 +1,8 @@
 package com.jk.offermate.data.memory
 
 import com.jk.offermate.agent.FakeAiClient
-import com.jk.offermate.agent.ProfileMatcher
-import com.jk.offermate.agent.ResumeStructurer
+import com.jk.offermate.agent.resume.ProfileMatcher
+import com.jk.offermate.agent.resume.ResumeStructurer
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

@@ -1,5 +1,7 @@
 package com.jk.offermate.agent
 
+import com.jk.offermate.agent.tool.ToolCall
+
 /** 对话消息角色。TOOL 表示工具执行结果消息。 */
 enum class Role { SYSTEM, USER, ASSISTANT, TOOL }
 

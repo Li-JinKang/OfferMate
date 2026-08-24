@@ -1,9 +1,9 @@
 package com.jk.offermate.data.memory
 
-import com.jk.offermate.agent.ProfileMatcher
-import com.jk.offermate.agent.ResumeDetail
-import com.jk.offermate.agent.ResumeStructurer
-import com.jk.offermate.agent.StructuredResume
+import com.jk.offermate.agent.resume.ProfileMatcher
+import com.jk.offermate.agent.resume.ResumeDetail
+import com.jk.offermate.agent.resume.ResumeStructurer
+import com.jk.offermate.agent.resume.StructuredResume
 
 /**
  * 简历落地：把简历原文结构化、判定方向，并写入分层文件记忆。

@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.jk.offermate.agent.AnsweredQuestion
+import com.jk.offermate.agent.pipeline.AnsweredQuestion
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.Role
 import com.jk.offermate.agent.chat.FollowUpService

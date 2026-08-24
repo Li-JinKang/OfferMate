@@ -1,7 +1,7 @@
 package com.jk.offermate.data.repository
 
-import com.jk.offermate.agent.Difficulty
-import com.jk.offermate.agent.QuestionSource
+import com.jk.offermate.agent.pipeline.Difficulty
+import com.jk.offermate.agent.pipeline.QuestionSource
 import com.jk.offermate.data.local.dao.FingerprintRow
 import com.jk.offermate.data.local.dao.QuestionDao
 import com.jk.offermate.data.local.entity.QuestionEntity
