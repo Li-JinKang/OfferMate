@@ -38,7 +38,9 @@ import org.intellij.markdown.parser.MarkdownParser
  */
 object MarkdownStateCache {
 
-    private const val MAX_ENTRIES = 200
+    // 现在缓存的是**单个块**而非整条消息（见 StreamingMarkdown），条目更多但每条更小，
+    // 所以上限相应放宽。
+    private const val MAX_ENTRIES = 600
 
     /** flavour 是无状态的规则描述，可安全共享；parser 每次解析单独建，避免并发共享实例。 */
     private val flavour = GFMFlavourDescriptor()

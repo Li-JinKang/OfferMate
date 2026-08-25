@@ -12,6 +12,7 @@ import com.jk.offermate.agent.chat.QuestionContext
 import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
 import com.jk.offermate.ui.components.MarkdownStateCache
+import com.jk.offermate.ui.components.StreamingMarkdown
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -147,9 +148,9 @@ class ChatViewModel(
                 }
                 // 定稿为完整回复（与入库内容一致，供 messages 去重）。
                 _streaming.value = reply
-                // 顺序要紧：先把完整回复解析好入缓存，**再**关闭流式态。UI 关闭流式态时会从
-                // 「分段渲染」切到「整篇渲染」，缓存已就绪才不会在主线程同步解析整篇答案、掉一帧。
-                runCatching { MarkdownStateCache.warm(reply) }
+                // 顺序要紧：先把定稿内容按块解析好入缓存，**再**关闭流式态。关闭流式态时
+                // UI 会从「打字机 + 异步尾巴」切到「按块同步渲染」，缓存已就绪才不会掉帧。
+                runCatching { warmBlocks(reply) }
                 _streamingActive.value = false
                 conversationRepository.append(convId, Role.ASSISTANT, reply)
                 runCatching { maybeGenerateTitle(convId, isFirstRound, content, reply) }
@@ -255,7 +256,19 @@ class ChatViewModel(
     private suspend fun prewarmMarkdown(messages: List<ChatMessage>) {
         messages.asSequence()
             .filter { it.role == Role.ASSISTANT && it.content.isNotBlank() }
-            .forEach { MarkdownStateCache.warm(it.content) }
+            .forEach { warmBlocks(it.content) }
+    }
+
+    /**
+     * 按**块**预热，而不是整条消息。
+     *
+     * UI 侧 AI 消息已按 Markdown 块展开成多个 LazyColumn item（见 ChatRows），
+     * 渲染时的缓存 key 是单个块的文本，所以预热也必须按块来，否则一条都命中不上。
+     */
+    private suspend fun warmBlocks(content: String) {
+        StreamingMarkdown.blocksMemo(content).forEach { block ->
+            if (block.isNotBlank()) MarkdownStateCache.warm(block)
+        }
     }
 
     /**

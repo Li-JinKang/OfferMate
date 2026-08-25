@@ -75,7 +75,6 @@ import com.jk.offermate.data.local.entity.ConversationEntity
 import com.jk.offermate.ui.components.MarkdownParseMode
 import com.jk.offermate.ui.components.MarkdownText
 import com.jk.offermate.ui.components.PartialMarkdown
-import com.jk.offermate.ui.components.StreamingMarkdown
 import com.jk.offermate.ui.components.rememberTypewriterText
 import com.jk.offermate.ui.navigation.DockPillHeight
 import com.jk.offermate.ui.theme.Indigo
@@ -97,6 +96,9 @@ private const val STICK_THROTTLE_MS = 80L
 
 /** 判定“仍在底部”的容差（px）：留一点余量，避免像素级抖动导致自动贴底反复开关。 */
 private const val STICK_TOLERANCE_PX = 80
+
+/** 消息之间的间距。补在每条消息的首行上，而不是用 spacedBy——同一条回答的块之间不该有它。 */
+private val MESSAGE_SPACING = 18.dp
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
@@ -135,25 +137,62 @@ fun FollowUpScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
+    // 正在流式生成的那条消息（必为最后一条 AI 消息）；无流式时为 -1。
+    val streamingIndex = if (streaming && messages.lastOrNull()?.role == Role.ASSISTANT) {
+        messages.lastIndex
+    } else {
+        -1
+    }
+
+    // 打字机放在**列表外层**：它的输出要参与决定行列表怎么切，不能待在某个 item 内部
+    // （item 会随滚动被回收，状态也就丢了）。
+    val revealed = rememberTypewriterText(
+        fullText = if (streamingIndex >= 0) messages[streamingIndex].content else "",
+        isStreaming = streamingIndex >= 0
+    )
+    val streamingText = if (streamingIndex >= 0) {
+        remember(revealed) { PartialMarkdown.sanitize(revealed) }
+    } else {
+        ""
+    }
+
+    // AI 消息按 Markdown 块展开成多个 item，这样只有可见的块需要组合与测量。
+    val chatRows = remember(messages, streamingIndex, streamingText) {
+        buildChatRows(messages, streamingIndex, streamingText)
+    }
+    val rows = chatRows.rows
+
+    // 尚未出现任何 AI 内容时才显示“正在思考”。它是列表里额外的一个 item。
+    val lastMessage = messages.lastOrNull()
+    val showThinking = sending &&
+        (lastMessage == null || lastMessage.role != Role.ASSISTANT || lastMessage.content.isBlank())
+
+    // 列表最后一个 item 的下标（含“正在思考”那一项）。**不再等于 messages.lastIndex**。
+    val lastItemIndex = rows.lastIndex + if (showThinking) 1 else 0
+
+    // 这些都是普通参数、不是 snapshot state，长驻的 LaunchedEffect 直接捕获会读到启动那一刻的旧值。
+    // 包一层 rememberUpdatedState 让下面的 snapshotFlow / derivedStateOf 能观察到更新。
+    val currentScrollTo by rememberUpdatedState(scrollToIndex)
+    val currentRows by rememberUpdatedState(chatRows)
+    val currentLastItem by rememberUpdatedState(lastItemIndex)
+    val currentStreamingText by rememberUpdatedState(streamingText)
+
     // 有搜索跳转目标时优先定位到命中消息；否则新消息到达时自动滚到底部。
+    // scrollToIndex 是**消息下标**，必须换算成 item 下标。
     LaunchedEffect(scrollToIndex, messages.size) {
-        if (scrollToIndex != null && messages.isNotEmpty()) {
-            listState.scrollToItem(scrollToIndex.coerceIn(0, messages.lastIndex))
+        if (scrollToIndex != null && rows.isNotEmpty()) {
+            listState.scrollToItem(chatRows.rowOfMessage(scrollToIndex))
             onScrollConsumed()
         }
     }
     LaunchedEffect(messages.size) {
-        if (scrollToIndex == null && messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+        if (scrollToIndex == null && rows.isNotEmpty()) {
+            listState.animateScrollToItem(lastItemIndex.coerceAtLeast(0))
         }
     }
 
-    // messages / scrollToIndex 是普通参数、不是 snapshot state，长驻的 LaunchedEffect 直接捕获会读到
-    // 启动那一刻的旧值。包一层 rememberUpdatedState 让下面的 snapshotFlow / derivedStateOf 能观察到更新。
-    val currentMessages by rememberUpdatedState(messages)
-    val currentScrollTo by rememberUpdatedState(scrollToIndex)
-
     // 用户主动上滑后暂停自动贴底，滑回接近底部再自动恢复——否则生成期间自动滚动会和手动滚动打架。
+    // 这里用 totalItemsCount 而非消息数，展开后依然成立。
     val stickToBottom = remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -163,20 +202,20 @@ fun FollowUpScreen(
         }
     }
 
-    // 流式生长时持续贴底。两点与之前不同：
+    // 流式生长时持续贴底。两点与最初实现不同：
     // 1. 节流：原来 LaunchedEffect(lastLen) 每个 token 都会取消重启一次；这里合并到 ~12 次/秒。
-    // 2. 精确贴底：scrollToItem(lastIndex) 是把该 item **顶部**对齐视口顶部，气泡一长起来
-    //    新生成的文字反而被顶到屏幕外。改用 scrollBy 直接推进偏移，等价于 Web 端直接写 scrollTop。
+    // 2. 精确贴底：scrollToItem 只把 item **顶部**对齐视口顶部，气泡一长起来新生成的文字
+    //    反而被顶到屏幕外。改用 scrollBy 直接推进偏移，等价于 Web 端直接写 scrollTop。
     LaunchedEffect(listState) {
-        snapshotFlow { currentMessages.lastOrNull()?.content?.length ?: 0 }
+        snapshotFlow { currentStreamingText.length }
             .sample(STICK_THROTTLE_MS)
             .collect {
-                val msgs = currentMessages
-                if (currentScrollTo != null || msgs.isEmpty() || !stickToBottom.value) return@collect
+                val target = currentLastItem
+                if (currentScrollTo != null || target < 0 || !stickToBottom.value) return@collect
                 val info = listState.layoutInfo
-                val lastItem = info.visibleItemsInfo.lastOrNull { it.index == msgs.lastIndex }
+                val lastItem = info.visibleItemsInfo.lastOrNull { it.index == target }
                 if (lastItem == null) {
-                    listState.scrollToItem(msgs.lastIndex)
+                    listState.scrollToItem(target)
                 } else {
                     val overflow = (lastItem.offset + lastItem.size - info.viewportEndOffset).toFloat()
                     if (overflow > 0f) listState.scrollBy(overflow)
@@ -184,13 +223,12 @@ fun FollowUpScreen(
             }
     }
 
-    // 是否显示“回到底部”悬浮按钮：最后一条消息未完全可见时显示
+    // 是否显示“回到底部”悬浮按钮：最后一个 item 未完全可见时显示
     val showScrollDown by remember {
         derivedStateOf {
             val layout = listState.layoutInfo
             val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val msgs = currentMessages
-            msgs.isNotEmpty() && lastVisible < msgs.lastIndex
+            currentRows.rows.isNotEmpty() && lastVisible < currentLastItem
         }
     }
 
@@ -242,22 +280,24 @@ fun FollowUpScreen(
                         end = 16.dp,
                         top = 16.dp,
                         bottom = 16.dp + contentBottomPadding + updateButtonReserve
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                    )
+                    // 不能用 verticalArrangement = spacedBy(18.dp)：一条 AI 回答现在是多个 item，
+                    // 那样会把消息间距塞进同一条回答的块之间。改为只给「消息首行」补上间距。
                 ) {
-                    itemsIndexed(messages) { index, message ->
-                        // 只有「正在流式生成的最后一条 AI 气泡」走打字机，历史消息一律全量渲染。
-                        MessageBubble(
-                            message = message,
-                            isStreaming = streaming &&
-                                index == messages.lastIndex &&
-                                message.role == Role.ASSISTANT
-                        )
+                    itemsIndexed(rows, key = { _, row -> row.key }) { index, row ->
+                        val topPadding = if (row.isMessageStart && index > 0) MESSAGE_SPACING else 0.dp
+                        Box(Modifier.fillMaxWidth().padding(top = topPadding)) {
+                            ChatRowContent(row)
+                        }
                     }
-                    // 仅在“尚无 AI 气泡”时显示思考指示：流式首个 token 到达后，
-                    // 最后一条已是正在生长的 AI 气泡，无需再显示“正在思考”。
-                    if (sending && messages.lastOrNull()?.role != Role.ASSISTANT) {
-                        item { ThinkingIndicator() }
+                    // 仅在“尚无 AI 内容”时显示思考指示：流式首个 token 到达后，
+                    // 最后一项已是正在生长的 AI 块，无需再显示“正在思考”。
+                    if (showThinking) {
+                        item(key = "thinking") {
+                            Box(Modifier.fillMaxWidth().padding(top = MESSAGE_SPACING)) {
+                                ThinkingIndicator()
+                            }
+                        }
                     }
                 }
             }
@@ -270,7 +310,7 @@ fun FollowUpScreen(
                         .padding(end = 16.dp, bottom = 12.dp + contentBottomPadding + updateButtonReserve)
                 ) {
                     ScrollToBottomButton {
-                        scope.launch { listState.animateScrollToItem(messages.lastIndex) }
+                        scope.launch { listState.animateScrollToItem(lastItemIndex.coerceAtLeast(0)) }
                     }
                 }
             }
@@ -552,64 +592,40 @@ private fun SessionSwitcherRow(
     }
 }
 
+/** 渲染展开后的一行。 */
 @Composable
-private fun MessageBubble(message: ChatMessage, isStreaming: Boolean = false) {
-    if (message.role == Role.USER) {
-        // 用户消息：右对齐气泡
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            Surface(
-                shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 6.dp),
-                color = UserBubble,
-                modifier = Modifier.widthIn(max = 300.dp)
-            ) {
-                Text(
-                    message.content,
-                    color = OnIndigoContainer,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                )
+private fun ChatRowContent(row: ChatRow) {
+    when (row) {
+        is ChatRow.User -> UserBubbleRow(row.content)
+        is ChatRow.AiBlock -> MarkdownText(
+            markdown = row.text,
+            modifier = Modifier.fillMaxWidth(),
+            // 已写完的块内容不再变化：同步解析（单块很小，且多数已由 ChatViewModel 预热）
+            // 并入缓存，之后每次进入视口都是缓存命中。
+            // 只有流式生成中的最后一块走异步且不入缓存。
+            mode = if (row.isStreamingTail) {
+                MarkdownParseMode.ASYNC_TRANSIENT
+            } else {
+                MarkdownParseMode.BLOCKING
             }
-        }
-    } else {
-        // AI 回答：铺满整屏、无气泡，Markdown 直接渲染（标题/列表/代码块/表格）
-        AiMessageBody(message.content, isStreaming)
+        )
     }
 }
 
-/**
- * AI 回答正文。流式中叠三层处理：
- * 1. 双指针打字机匀速吐字，抹平 SSE 到达的块状抖动，同时把重解析封顶在每帧一次；
- * 2. 结构感知补全未闭合的围栏/行内标记，避免块级结构在闭合瞬间跳变；
- * 3. 分段渲染——已写完的块级前缀走缓存复用，只有正在生成的尾巴每帧重解析。
- *
- * 非流式（历史消息、定稿消息）走单次全量渲染，与优化前行为一致。
- */
+/** 用户消息：右对齐气泡。 */
 @Composable
-private fun AiMessageBody(content: String, isStreaming: Boolean) {
-    if (!isStreaming) {
-        // 定稿/历史消息：单次全量渲染，内容已由 ChatViewModel 预热进缓存。
-        MarkdownText(content, Modifier.fillMaxWidth())
-        return
-    }
-
-    val revealed = rememberTypewriterText(content, isStreaming = true)
-    val sanitized = remember(revealed) { PartialMarkdown.sanitize(revealed) }
-    val blocks = remember(sanitized) { StreamingMarkdown.blocks(sanitized) }
-
-    Column(Modifier.fillMaxWidth()) {
-        blocks.forEachIndexed { index, block ->
-            if (block.isEmpty()) return@forEachIndexed
-            MarkdownText(
-                markdown = block,
-                modifier = Modifier.fillMaxWidth(),
-                // 已写完的块内容不再变化：同步解析（单块很小，成本可忽略）并入缓存，
-                // 之后每帧都是缓存命中，组合树与布局保持稳定。
-                // 只有最后一块在生成中，走异步且不入缓存。
-                mode = if (index == blocks.lastIndex) {
-                    MarkdownParseMode.ASYNC_TRANSIENT
-                } else {
-                    MarkdownParseMode.BLOCKING
-                }
+private fun UserBubbleRow(content: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Surface(
+            shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 6.dp),
+            color = UserBubble,
+            modifier = Modifier.widthIn(max = 300.dp)
+        ) {
+            Text(
+                content,
+                color = OnIndigoContainer,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
             )
         }
     }

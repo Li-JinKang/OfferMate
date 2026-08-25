@@ -22,6 +22,26 @@ object StreamingMarkdown {
     /** 短文本不切：整篇解析本来就便宜，切开反而多出若干次组合和缓存写入。 */
     private const val MIN_SPLIT_LENGTH = 200
 
+    private const val MEMO_MAX_ENTRIES = 300
+
+    private val memo = object : LinkedHashMap<String, List<String>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>): Boolean =
+            size > MEMO_MAX_ENTRIES
+    }
+    private val memoLock = Any()
+
+    /**
+     * [blocks] 的记忆化版本，用于**内容固定**的消息（历史消息、定稿消息）。
+     *
+     * 流式生成中的那条消息每帧内容都不同，**不要**走这里，否则每帧都会塞一条新缓存。
+     */
+    fun blocksMemo(text: String): List<String> {
+        synchronized(memoLock) { memo[text] }?.let { return it }
+        val result = blocks(text)
+        synchronized(memoLock) { memo[text] = result }
+        return result
+    }
+
     private val FENCE_LINE = Regex("^[ \t]*```")
     private val LIST_ITEM = Regex("^[ \t]*([-*+]|\\d+[.)])\\s")
     private val QUOTE_LINE = Regex("^[ \t]*>")
