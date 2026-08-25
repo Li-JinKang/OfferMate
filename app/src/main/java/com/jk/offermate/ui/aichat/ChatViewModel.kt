@@ -11,7 +11,10 @@ import com.jk.offermate.agent.chat.FollowUpService
 import com.jk.offermate.agent.chat.QuestionContext
 import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
+import com.jk.offermate.ui.components.MarkdownStateCache
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -51,10 +54,23 @@ class ChatViewModel(
             .flatMapLatest { id ->
                 if (id == null) flowOf(emptyList()) else conversationRepository.observeMessages(id)
             }
+            // 在消息交给 UI **之前**，先在后台把 AI 回复的 Markdown 解析好写入 MarkdownStateCache。
+            // 这样 MarkdownText 首次组合即命中缓存，跳过 State.Loading（空白）那一帧，
+            // 不会出现“进入会话页先看到用户消息、AI 回答慢一拍才出现”。
+            .map { list -> list.also { prewarmMarkdown(it) } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** 正在流式生成中的 AI 文本（null 表示当前无流式）。 */
     private val _streaming = MutableStateFlow<String?>(null)
+
+    /**
+     * 是否正处于**流式生成**中。UI 用它判断最后一条气泡要不要走打字机。
+     *
+     * 不能用 [sending] 代替：`updateAnswerFromDiscussion()` 也会把 sending 置真，
+     * 那时最后一条是已落库的历史消息，若被当成流式就会整条重新“打”一遍。
+     */
+    private val _streamingActive = MutableStateFlow(false)
+    val streamingActive: StateFlow<Boolean> = _streamingActive.asStateFlow()
 
     /**
      * 供 UI 渲染的消息：在已落库消息之上，追加“正在流式生成”的临时 AI 气泡。
@@ -119,18 +135,29 @@ class ChatViewModel(
                 conversationRepository.append(convId, Role.USER, content)
                 // 开始流式：置空占位，随 token 到达增量拼接。
                 _streaming.value = ""
-                val reply = followUpService.replyStreaming(
-                    context = currentContext(),
-                    history = conversationRepository.history(convId)
-                ) { delta -> _streaming.value = (_streaming.value ?: "") + delta }
-                // 定稿为完整回复（与入库内容一致，供 messages 去重），随后落库。
+                _streamingActive.value = true
+                val ctx = currentContext()
+                val history = conversationRepository.history(convId)
+                val reply = streamBatched { onDelta ->
+                    followUpService.replyStreaming(
+                        context = ctx,
+                        history = history,
+                        onDelta = onDelta
+                    )
+                }
+                // 定稿为完整回复（与入库内容一致，供 messages 去重）。
                 _streaming.value = reply
+                // 顺序要紧：先把完整回复解析好入缓存，**再**关闭流式态。UI 关闭流式态时会从
+                // 「分段渲染」切到「整篇渲染」，缓存已就绪才不会在主线程同步解析整篇答案、掉一帧。
+                runCatching { MarkdownStateCache.warm(reply) }
+                _streamingActive.value = false
                 conversationRepository.append(convId, Role.ASSISTANT, reply)
                 runCatching { maybeGenerateTitle(convId, isFirstRound, content, reply) }
             } catch (e: Exception) {
                 _streaming.value = null
                 _error.value = e.message ?: "回复失败，请稍后重试"
             } finally {
+                _streamingActive.value = false
                 _sending.value = false
             }
         }
@@ -182,8 +209,54 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * 运行一次流式请求，把 IO 线程到达的增量与 UI 状态发布**解耦**后写入 [_streaming]。
+     *
+     * 替代原来的 `_streaming.value = (_streaming.value ?: "") + delta`，解决两个问题：
+     * 1. 那种写法每个 token 都全量复制一次字符串，整段回复累计 O(n²) 次字符拷贝 + 同等规模的垃圾对象。
+     *    这里用 [StringBuilder] 追加，摊还 O(1)。
+     * 2. 每个 token 发布一次状态。这里每次唤醒会把通道里**已经到达的增量一次性排干**再发布，
+     *    provider 突发推送时自然合并成一次 UI 更新。
+     *
+     * [builder] 只被 pump 协程访问（增量经 Channel 从 IO 线程转交），因此无需加锁。
+     *
+     * @param run 实际发起流式请求，参数为要传给底层的 onDelta 回调
+     */
+    private suspend fun streamBatched(run: suspend (onDelta: (String) -> Unit) -> String): String =
+        coroutineScope {
+            val deltas = Channel<String>(Channel.UNLIMITED)
+            val builder = StringBuilder()
+            val pump = launch {
+                while (true) {
+                    // 先挂起等第一个增量；拿到后把通道里剩下的全部排干，合并为一次发布。
+                    val first = deltas.receiveCatching().getOrNull() ?: break
+                    builder.append(first)
+                    while (true) builder.append(deltas.tryReceive().getOrNull() ?: break)
+                    _streaming.value = builder.toString()
+                }
+            }
+            try {
+                run { delta -> deltas.trySend(delta) }
+            } finally {
+                deltas.close()
+                pump.join()
+            }
+        }
+
     fun consumeError() { _error.value = null }
     fun consumeNotice() { _notice.value = null }
+
+    /**
+     * 在消息切到 UI 前，后台预解析该会话所有 AI 回复的 Markdown 并写入 [MarkdownStateCache]，
+     * 让 [com.jk.offermate.ui.components.MarkdownText] 首次组合即命中缓存，跳过空白帧。
+     *
+     * 只预热正文非空的 AI 消息；用户消息是纯文本，不走 Markdown 渲染。
+     */
+    private suspend fun prewarmMarkdown(messages: List<ChatMessage>) {
+        messages.asSequence()
+            .filter { it.role == Role.ASSISTANT && it.content.isNotBlank() }
+            .forEach { MarkdownStateCache.warm(it.content) }
+    }
 
     /**
      * 首轮对话结束后，为**无标题**的会话生成一个摘要标题（仅一次，后续不再更新）。

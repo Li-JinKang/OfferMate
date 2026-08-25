@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,8 +55,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,7 +72,11 @@ import com.jk.offermate.agent.pipeline.AnsweredQuestion
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.Role
 import com.jk.offermate.data.local.entity.ConversationEntity
+import com.jk.offermate.ui.components.MarkdownParseMode
 import com.jk.offermate.ui.components.MarkdownText
+import com.jk.offermate.ui.components.PartialMarkdown
+import com.jk.offermate.ui.components.StreamingMarkdown
+import com.jk.offermate.ui.components.rememberTypewriterText
 import com.jk.offermate.ui.navigation.DockPillHeight
 import com.jk.offermate.ui.theme.Indigo
 import com.jk.offermate.ui.theme.IndigoContainer
@@ -77,13 +84,21 @@ import com.jk.offermate.ui.theme.OnIndigoContainer
 import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextPrimary
 import com.jk.offermate.ui.theme.TextSecondary
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 
 // 输入区/气泡的局部配色，贴近设计稿
 private val InputBarBg = Color(0xFFF2F3F7)
 private val UserBubble = Color(0xFFECECFE)
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** 流式贴底的节流间隔：约 12 次/秒，足够跟手又不会每 token 都触发滚动。 */
+private const val STICK_THROTTLE_MS = 80L
+
+/** 判定“仍在底部”的容差（px）：留一点余量，避免像素级抖动导致自动贴底反复开关。 */
+private const val STICK_TOLERANCE_PX = 80
+
+@OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun FollowUpScreen(
     question: AnsweredQuestion?,
@@ -91,6 +106,11 @@ fun FollowUpScreen(
     activeConversationId: String? = null,
     messages: List<ChatMessage>,
     sending: Boolean,
+    /**
+     * 是否正在**流式生成**（区别于 [sending]：更新答案等操作也会置 sending）。
+     * 仅当为 true 时，最后一条 AI 气泡才走打字机逐字揭示。
+     */
+    streaming: Boolean = false,
     error: String?,
     notice: String?,
     onBack: () -> Unit,
@@ -127,12 +147,41 @@ fun FollowUpScreen(
             listState.animateScrollToItem(messages.size - 1)
         }
     }
-    // 流式生长：最后一条 AI 气泡文本变长时持续贴底（消息条数不变，需单独追踪内容长度）。
-    val lastLen = messages.lastOrNull()?.content?.length ?: 0
-    LaunchedEffect(lastLen) {
-        if (scrollToIndex == null && messages.isNotEmpty()) {
-            listState.scrollToItem(messages.lastIndex)
+
+    // messages / scrollToIndex 是普通参数、不是 snapshot state，长驻的 LaunchedEffect 直接捕获会读到
+    // 启动那一刻的旧值。包一层 rememberUpdatedState 让下面的 snapshotFlow / derivedStateOf 能观察到更新。
+    val currentMessages by rememberUpdatedState(messages)
+    val currentScrollTo by rememberUpdatedState(scrollToIndex)
+
+    // 用户主动上滑后暂停自动贴底，滑回接近底部再自动恢复——否则生成期间自动滚动会和手动滚动打架。
+    val stickToBottom = remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
+            last.index >= info.totalItemsCount - 1 &&
+                last.offset + last.size <= info.viewportEndOffset + STICK_TOLERANCE_PX
         }
+    }
+
+    // 流式生长时持续贴底。两点与之前不同：
+    // 1. 节流：原来 LaunchedEffect(lastLen) 每个 token 都会取消重启一次；这里合并到 ~12 次/秒。
+    // 2. 精确贴底：scrollToItem(lastIndex) 是把该 item **顶部**对齐视口顶部，气泡一长起来
+    //    新生成的文字反而被顶到屏幕外。改用 scrollBy 直接推进偏移，等价于 Web 端直接写 scrollTop。
+    LaunchedEffect(listState) {
+        snapshotFlow { currentMessages.lastOrNull()?.content?.length ?: 0 }
+            .sample(STICK_THROTTLE_MS)
+            .collect {
+                val msgs = currentMessages
+                if (currentScrollTo != null || msgs.isEmpty() || !stickToBottom.value) return@collect
+                val info = listState.layoutInfo
+                val lastItem = info.visibleItemsInfo.lastOrNull { it.index == msgs.lastIndex }
+                if (lastItem == null) {
+                    listState.scrollToItem(msgs.lastIndex)
+                } else {
+                    val overflow = (lastItem.offset + lastItem.size - info.viewportEndOffset).toFloat()
+                    if (overflow > 0f) listState.scrollBy(overflow)
+                }
+            }
     }
 
     // 是否显示“回到底部”悬浮按钮：最后一条消息未完全可见时显示
@@ -140,7 +189,8 @@ fun FollowUpScreen(
         derivedStateOf {
             val layout = listState.layoutInfo
             val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: 0
-            messages.isNotEmpty() && lastVisible < messages.lastIndex
+            val msgs = currentMessages
+            msgs.isNotEmpty() && lastVisible < msgs.lastIndex
         }
     }
 
@@ -195,8 +245,14 @@ fun FollowUpScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
-                    itemsIndexed(messages) { _, message ->
-                        MessageBubble(message)
+                    itemsIndexed(messages) { index, message ->
+                        // 只有「正在流式生成的最后一条 AI 气泡」走打字机，历史消息一律全量渲染。
+                        MessageBubble(
+                            message = message,
+                            isStreaming = streaming &&
+                                index == messages.lastIndex &&
+                                message.role == Role.ASSISTANT
+                        )
                     }
                     // 仅在“尚无 AI 气泡”时显示思考指示：流式首个 token 到达后，
                     // 最后一条已是正在生长的 AI 气泡，无需再显示“正在思考”。
@@ -497,7 +553,7 @@ private fun SessionSwitcherRow(
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(message: ChatMessage, isStreaming: Boolean = false) {
     if (message.role == Role.USER) {
         // 用户消息：右对齐气泡
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -516,7 +572,46 @@ private fun MessageBubble(message: ChatMessage) {
         }
     } else {
         // AI 回答：铺满整屏、无气泡，Markdown 直接渲染（标题/列表/代码块/表格）
-        MarkdownText(message.content, modifier = Modifier.fillMaxWidth())
+        AiMessageBody(message.content, isStreaming)
+    }
+}
+
+/**
+ * AI 回答正文。流式中叠三层处理：
+ * 1. 双指针打字机匀速吐字，抹平 SSE 到达的块状抖动，同时把重解析封顶在每帧一次；
+ * 2. 结构感知补全未闭合的围栏/行内标记，避免块级结构在闭合瞬间跳变；
+ * 3. 分段渲染——已写完的块级前缀走缓存复用，只有正在生成的尾巴每帧重解析。
+ *
+ * 非流式（历史消息、定稿消息）走单次全量渲染，与优化前行为一致。
+ */
+@Composable
+private fun AiMessageBody(content: String, isStreaming: Boolean) {
+    if (!isStreaming) {
+        // 定稿/历史消息：单次全量渲染，内容已由 ChatViewModel 预热进缓存。
+        MarkdownText(content, Modifier.fillMaxWidth())
+        return
+    }
+
+    val revealed = rememberTypewriterText(content, isStreaming = true)
+    val sanitized = remember(revealed) { PartialMarkdown.sanitize(revealed) }
+    val blocks = remember(sanitized) { StreamingMarkdown.blocks(sanitized) }
+
+    Column(Modifier.fillMaxWidth()) {
+        blocks.forEachIndexed { index, block ->
+            if (block.isEmpty()) return@forEachIndexed
+            MarkdownText(
+                markdown = block,
+                modifier = Modifier.fillMaxWidth(),
+                // 已写完的块内容不再变化：同步解析（单块很小，成本可忽略）并入缓存，
+                // 之后每帧都是缓存命中，组合树与布局保持稳定。
+                // 只有最后一块在生成中，走异步且不入缓存。
+                mode = if (index == blocks.lastIndex) {
+                    MarkdownParseMode.ASYNC_TRANSIENT
+                } else {
+                    MarkdownParseMode.BLOCKING
+                }
+            )
+        }
     }
 }
 
