@@ -1,5 +1,6 @@
 package com.jk.offermate.ui.profile
 
+import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -21,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,21 +38,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.runtime.produceState
-import androidx.compose.ui.graphics.asImageBitmap
-import android.graphics.Bitmap
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.jk.offermate.R
 import com.jk.offermate.agent.resume.ResumeProfile
 import com.jk.offermate.data.memory.DetailKind
@@ -61,18 +65,24 @@ import com.jk.offermate.di.AppContainer
 import com.jk.offermate.ui.components.ZoomableImage
 import com.jk.offermate.ui.theme.OutlineSoft
 import com.jk.offermate.ui.theme.TextSecondary
+import com.jk.offermate.work.AnalyzeResumeWorker
 
 @Composable
 fun ProfileRoute(container: AppContainer, onBack: () -> Unit = {}) {
     val settingsViewModel: SettingsViewModel = viewModel(
-        factory = SettingsViewModel.provideFactory(container.settingsRepository, container.mcpToolRepository)
+        factory = SettingsViewModel.provideFactory(
+            repository = container.settingsRepository,
+            mcpToolRepository = container.mcpToolRepository,
+            resumeRepository = container.resumeRepository,
+            importScheduler = container.importScheduler
+        )
     )
     val resumeViewModel: ResumeViewModel = viewModel(
         factory = ResumeViewModel.provideFactory(
-            container.resumeRepository,
-            container.resumeTextExtractor,
-            container.resumeFileStore,
-            container.resumeIngestor
+            repository = container.resumeRepository,
+            extractor = container.resumeTextExtractor,
+            fileStore = container.resumeFileStore,
+            importScheduler = container.importScheduler
         )
     )
     val settingsUi by settingsViewModel.uiState.collectAsStateWithLifecycle()
@@ -84,9 +94,21 @@ fun ProfileRoute(container: AppContainer, onBack: () -> Unit = {}) {
     val memoryViewModel: MemoryViewModel = viewModel(
         factory = MemoryViewModel.provideFactory(container.memoryStore)
     )
-    // 简历导入/结构化完成后刷新记忆列表
-    val structuring by resumeViewModel.structuring.collectAsStateWithLifecycle()
-    LaunchedEffect(structuring) { if (!structuring) memoryViewModel.refresh() }
+
+    // 观察 WorkManager 中简历分析任务的状态（Flow API，无需 LiveData 桥接）
+    val workManager = WorkManager.getInstance(LocalContext.current)
+    val resumeWorkInfos by workManager
+        .getWorkInfosForUniqueWorkFlow(AnalyzeResumeWorker.WORK_NAME)
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val resumeAnalyzing = resumeWorkInfos.any { info ->
+        info.state == WorkInfo.State.RUNNING || info.state == WorkInfo.State.ENQUEUED
+    }
+    // Worker 完成后刷新记忆列表
+    LaunchedEffect(resumeWorkInfos) {
+        if (resumeWorkInfos.any { info -> info.state == WorkInfo.State.SUCCEEDED }) {
+            memoryViewModel.refresh()
+        }
+    }
 
     val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(resumeViewModel::onPdfPicked)
@@ -97,6 +119,7 @@ fun ProfileRoute(container: AppContainer, onBack: () -> Unit = {}) {
         profile = profile,
         resumeFilePath = resumeFilePath,
         resumeLoading = resumeLoading,
+        resumeAnalyzing = resumeAnalyzing,
         resumeError = resumeError,
         onPickPdf = { pdfLauncher.launch(arrayOf("application/pdf")) },
         onSaveRawText = resumeViewModel::saveRawText,
@@ -119,6 +142,7 @@ fun ProfileScreen(
     profile: ResumeProfile,
     resumeFilePath: String?,
     resumeLoading: Boolean,
+    resumeAnalyzing: Boolean = false,
     resumeError: String?,
     onPickPdf: () -> Unit,
     onSaveRawText: (String) -> Unit,
@@ -153,9 +177,22 @@ fun ProfileScreen(
             Text("设置", style = MaterialTheme.typography.titleLarge)
         }
 
-        val resumeSubtitle = if (profile.rawText.isBlank()) "未上传" else "已上传"
+        val resumeSubtitle = when {
+            resumeAnalyzing -> "AI 分析中…"
+            profile.rawText.isBlank() -> "未上传"
+            else -> "已上传"
+        }
         ExpandableCard(title = "我的简历", subtitle = resumeSubtitle) {
-            ResumeContent(profile, resumeFilePath, resumeLoading, resumeError, onPickPdf, onSaveRawText, onConsumeError)
+            ResumeContent(
+                profile = profile,
+                resumeFilePath = resumeFilePath,
+                loading = resumeLoading,
+                analyzing = resumeAnalyzing,
+                error = resumeError,
+                onPickPdf = onPickPdf,
+                onSaveRawText = onSaveRawText,
+                onConsumeError = onConsumeError
+            )
         }
 
         val activeLabel = AiProvider.from(settingsUi.activeProviderId).label
@@ -273,20 +310,39 @@ private fun ResumeContent(
     profile: ResumeProfile,
     resumeFilePath: String?,
     loading: Boolean,
+    analyzing: Boolean,
     error: String?,
     onPickPdf: () -> Unit,
     onSaveRawText: (String) -> Unit,
     onConsumeError: () -> Unit
 ) {
-    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+    Row(
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Text(
             if (resumeFilePath == null) "上传 PDF 简历，App 会自动识别内容" else "简历已上传",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             modifier = Modifier.weight(1f)
         )
-        OutlinedButton(onClick = onPickPdf, enabled = !loading) {
+        OutlinedButton(onClick = onPickPdf, enabled = !loading && !analyzing) {
             Text(if (loading) "解析中…" else if (resumeFilePath == null) "导入 PDF" else "重新导入")
+        }
+    }
+
+    if (analyzing) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            Text(
+                "AI 正在分析简历，生成记忆中…可退出此页面",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 
