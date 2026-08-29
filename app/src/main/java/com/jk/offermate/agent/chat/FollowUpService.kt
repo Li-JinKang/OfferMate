@@ -150,7 +150,7 @@ class FollowUpService(
             .orEmpty()
             .trim()
             .trim('"', '\'', '「', '」', '“', '”', '《', '》', '.', '。', '：', ':')
-            .take(15)
+            .take(TITLE_MAX_LENGTH)
 
     /** 有工具则走 agent 工具轮（模型可按需调用记忆工具），否则退回普通补全。 */
     private suspend fun runTurn(messages: List<ChatMessage>): String =
@@ -171,9 +171,12 @@ class FollowUpService(
             .trim()
     }
 
-    private companion object {
-        const val TITLE_INSTRUCTION =
-            "请用一句不超过15个字的简短标题概括这轮对话的主题。只输出标题本身，" +
+    companion object {
+        /** 首轮对话自动提炼标题的最大字符数；展示层再按可用宽度以省略号截断。 */
+        const val TITLE_MAX_LENGTH = 30
+
+        private val TITLE_INSTRUCTION =
+            "请用一句不超过${TITLE_MAX_LENGTH}个字的简短标题概括这轮对话的主题。只输出标题本身，" +
                 "不要引号、标点符号、前后缀或任何解释。"
 
         const val REVISE_INSTRUCTION =
