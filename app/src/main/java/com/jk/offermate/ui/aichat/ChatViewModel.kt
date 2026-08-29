@@ -287,7 +287,8 @@ class ChatViewModel(
         val summary = runCatching { followUpService.summarizeTitle(userText, reply) }
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
-        val title = summary ?: userText.trim().take(15)
+        // 与模型标题清洗使用同一上限，避免模型调用失败时标题异常变短。
+        val title = summary ?: userText.trim().take(FollowUpService.TITLE_MAX_LENGTH)
         if (title.isNotBlank()) conversationRepository.updateTitle(convId, title)
     }
 
