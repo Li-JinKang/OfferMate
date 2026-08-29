@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.compose.compiler)
     // Room 等注解处理器
     alias(libs.plugins.ksp)
+    // Baseline Profile：把 :baselineprofile 采集的 profile 合入 release 包
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 // 发布签名配置：从项目根目录 keystore.properties 读取（该文件不入库，见 .gitignore）。
@@ -58,6 +60,19 @@ android {
             // 调试构建保持不混淆，便于定位问题
             minifyEnabled false
             shrinkResources false
+        }
+    }
+
+    // Baseline Profile 插件会从 release 派生出 nonMinifiedRelease / benchmarkRelease 两个仅用于测量的变体，
+    // 它们默认继承 release 的签名配置。这里统一改用 debug 签名，原因有两个：
+    // 1. 没有 keystore.properties 时 release 未签名，这两个变体根本装不上设备；
+    // 2. 有正式签名时，它们与设备上已装的 debug 开发包签名冲突（INSTALL_FAILED_UPDATE_INCOMPATIBLE），
+    //    只能先卸载——而卸载会清掉本地对话数据，恰恰是生成 profile 需要走到的内容。
+    //    用 debug 签名就是覆盖安装，数据保留。
+    // 真正的 release 不受影响：无签名时 assembleRelease 仍产出未签名包，行为不变。
+    buildTypes.configureEach { bt ->
+        if (bt.name in ['nonMinifiedRelease', 'benchmarkRelease']) {
+            bt.signingConfig = signingConfigs.debug
         }
     }
     compileOptions {
@@ -128,6 +143,10 @@ dependencies {
     // Markdown 渲染（mikepenz，纯 Compose + Material3，需 Compose 1.8+；代码块用自定义 CodeCard）
     implementation libs.markdown.renderer
     implementation libs.markdown.renderer.m3
+
+    // Baseline Profile：运行时把打进包里的 profile 交给 ART；生成侧在 :baselineprofile 模块
+    implementation libs.androidx.profileinstaller
+    baselineProfile project(':baselineprofile')
 
     testImplementation libs.junit
     testImplementation libs.okhttp.mockwebserver

@@ -47,6 +47,7 @@ import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.State
 import com.mikepenz.markdown.model.markdownAnimations
+import com.mikepenz.markdown.model.markdownPadding
 import kotlinx.coroutines.flow.conflate
 
 private val CodeBackground = Color(0xFFF6F7FB)
@@ -120,6 +121,10 @@ private fun MarkdownContent(parsed: ParsedMarkdown, modifier: Modifier) {
             inlineCodeBackground = Color.Transparent
         ),
         typography = rememberChatMarkdownTypography(),
+        // 列表块自身的上下留白置 0。AI 消息会按列表项切成多个 LazyColumn item（见 StreamingMarkdown），
+        // 留着这份留白的话，被切开的两项之间会多出两份、比同一个列表内部的项间距宽一截。
+        // 置 0 后「拆」与「不拆」的项间距都等于 listItemTop + listItemBottom，视觉上完全一致。
+        padding = markdownPadding(list = 0.dp),
         // 关闭默认的 animateContentSize，内容更新（如流式）时不做尺寸动画，避免抖动。
         animations = markdownAnimations(animateTextSize = { this }),
         components = markdownComponents(

@@ -46,6 +46,14 @@ object StreamingMarkdown {
     private val LIST_ITEM = Regex("^[ \t]*([-*+]|\\d+[.)])\\s")
     private val QUOTE_LINE = Regex("^[ \t]*>")
 
+    /**
+     * 顶层列表项行：标记必须在第 0 列，且后面得有实际内容。
+     *
+     * 要求「有内容」是为了避开两处歧义：`-` 单独一行是 setext 标题的下划线，
+     * `- ` 这种空项在 CommonMark 里也不能打断段落。
+     */
+    private val TOP_LEVEL_LIST_ITEM = Regex("^([-*+]|\\d+[.)])\\s+\\S")
+
     /** 一行所属的块类型，用于判断能否在两块之间下刀。 */
     private enum class BlockKind { LIST, QUOTE, OTHER }
 
@@ -74,17 +82,47 @@ object StreamingMarkdown {
 
         val result = ArrayList<String>()
         var start = 0
-        // 最后一行不作为边界：它属于正在生成的那一段。
-        for (i in 0 until lines.lastIndex) {
-            if (lines[i].isNotBlank() || inFence[i]) continue
-            if (!isSafeBoundary(lines, i)) continue
-            // 片段 = lines[start..i]，joinToString 后天然以 "\n" 收尾，再补一个还原出空行本身。
-            result.add(lines.subList(start, i + 1).joinToString("\n") + "\n")
-            start = i + 1
+        for (i in 1 until lines.size) {
+            if (inFence[i]) continue
+            val prev = lines[i - 1]
+            val cut = (prev.isBlank() && !inFence[i - 1] && isSafeBoundary(lines, i - 1)) ||
+                isListItemStart(lines, i, inFence)
+            if (!cut) continue
+            // 片段 = lines[start..i-1]，joinToString 后不含末尾换行，补一个还原出行分隔本身。
+            result.add(lines.subList(start, i).joinToString("\n") + "\n")
+            start = i
         }
         val tail = lines.subList(start, lines.size).joinToString("\n")
         if (tail.isNotEmpty() || result.isEmpty()) result.add(tail)
         return result
+    }
+
+    /**
+     * 顶层列表项 [index] 处能否切开——这是**最重要的一刀**。
+     *
+     * 空行是唯一边界时，一个几十项的列表就是一个 LazyColumn item：里面每项一个 Row、每行两个文本节点，
+     * 而渲染库的每个文本节点都要重建 AnnotatedString 并挂上 onPlaced / 图片状态 / inlineContent，
+     * 于是整块必须在进入视口的那一帧全部组合测量完，滚动必然掉帧。而 AI 回答里长列表极其常见。
+     *
+     * 按项切开是安全的：渲染库不区分 loose/tight 列表，序号也取自首个列表项的数字
+     * （CommonMark start number），所以 `3. xxx` 单独成块依然显示为 3。间距上每个列表块会多出
+     * 一份 `padding.list` 上下留白，把它设为 0 后「拆」与「不拆」的项间距完全一致。
+     *
+     * 前提是**确认已经在列表内部**：往前找最近的非空行，它必须是列表标记行或缩进续行。
+     * 这样就绕开了「列表项能否打断段落」的一堆细则（有序项只有以 1 开头才能打断段落），
+     * 也不会切断列表项的惰性续行——续行在第 0 列且不是标记行，此时不切。
+     */
+    private fun isListItemStart(lines: List<String>, index: Int, inFence: BooleanArray): Boolean {
+        if (!TOP_LEVEL_LIST_ITEM.containsMatchIn(lines[index])) return false
+        for (j in index - 1 downTo 0) {
+            val line = lines[j]
+            if (line.isBlank()) continue
+            if (inFence[j]) return false
+            // 缩进行：列表项的续行或子项，说明这里是列表内部。
+            if (line.startsWith(" ") || line.startsWith("\t")) return true
+            return LIST_ITEM.containsMatchIn(line)
+        }
+        return false
     }
 
     /**

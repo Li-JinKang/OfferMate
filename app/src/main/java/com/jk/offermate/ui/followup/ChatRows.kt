@@ -26,6 +26,13 @@ internal sealed interface ChatRow {
     /** LazyColumn 的稳定 key。消息只会追加不会插入，所以「消息下标 + 块序号」足够稳定。 */
     val key: String
 
+    /**
+     * LazyColumn 的复用类型。滚动时同类型 item 之间可以复用组合槽位——更新一棵已有的组合树，
+     * 而不是从零建一棵。用户气泡和 Markdown 块的结构完全不同，混在一起复用没有意义，
+     * 所以显式区分开；不给的话所有 item 都是同一类型（null），会互相复用到无效。
+     */
+    val contentType: String
+
     /** 用户消息：整条一个 item（本来就短，没有拆分价值）。 */
     data class User(
         override val messageIndex: Int,
@@ -33,6 +40,7 @@ internal sealed interface ChatRow {
         val content: String
     ) : ChatRow {
         override val key: String get() = "u$messageIndex"
+        override val contentType: String get() = "user"
     }
 
     /** AI 回答的一个 Markdown 块。 */
@@ -45,6 +53,7 @@ internal sealed interface ChatRow {
         val isStreamingTail: Boolean
     ) : ChatRow {
         override val key: String get() = "a$messageIndex-$blockIndex"
+        override val contentType: String get() = "ai"
     }
 }
 
