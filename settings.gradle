@@ -24,3 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "OfferMate"
 include ':app'
+// 仅用于生成 Baseline Profile / 跑宏基准，不参与 app 打包
+include ':baselineprofile'

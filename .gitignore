@@ -4,6 +4,8 @@
 /.idea
 .DS_Store
 /build
+# 忽略各 Gradle 子模块的构建产物（APK、测试日志、缓存等）
+**/build/
 /captures
 .externalNativeBuild
 .cxx

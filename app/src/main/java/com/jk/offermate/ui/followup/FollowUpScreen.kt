@@ -284,7 +284,11 @@ fun FollowUpScreen(
                     // 不能用 verticalArrangement = spacedBy(18.dp)：一条 AI 回答现在是多个 item，
                     // 那样会把消息间距塞进同一条回答的块之间。改为只给「消息首行」补上间距。
                 ) {
-                    itemsIndexed(rows, key = { _, row -> row.key }) { index, row ->
+                    itemsIndexed(
+                        items = rows,
+                        key = { _, row -> row.key },
+                        contentType = { _, row -> row.contentType }
+                    ) { index, row ->
                         val topPadding = if (row.isMessageStart && index > 0) MESSAGE_SPACING else 0.dp
                         Box(Modifier.fillMaxWidth().padding(top = topPadding)) {
                             ChatRowContent(row)

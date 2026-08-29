@@ -1,0 +1,49 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    // 不带版本号：AGP 已随 :app 进入构建脚本 classpath，再声明版本会被 Gradle 判为版本冲突
+    id 'com.android.test'
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.androidx.baselineprofile)
+}
+
+android {
+    namespace 'com.jk.offermate.baselineprofile'
+    compileSdk 35
+
+    defaultConfig {
+        // BaselineProfileRule 需要 API 28+；非 root 设备实际要求 API 33+（见 README 里的生成命令说明）
+        minSdk 28
+        targetSdk 35
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // 被测应用
+    targetProjectPath = ':app'
+
+    // 自我插桩：宏基准需要测试进程与被测应用进程分离
+    experimentalProperties["android.experimental.self-instrumenting"] = true
+}
+
+// 只在这一个 flavor/build type 上生成，避免重复跑
+baselineProfile {
+    useConnectedDevices = true
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
+    }
+}
+
+dependencies {
+    implementation libs.junit
+    implementation libs.androidx.test.runner
+    implementation libs.androidx.test.uiautomator
+    implementation libs.androidx.benchmark.macro.junit4
+}
