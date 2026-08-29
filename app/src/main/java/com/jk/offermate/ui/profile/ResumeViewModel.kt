@@ -6,10 +6,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jk.offermate.agent.resume.ResumeProfile
-import com.jk.offermate.data.memory.ResumeIngestor
 import com.jk.offermate.data.resume.ResumeFileStore
 import com.jk.offermate.data.resume.ResumeRepository
 import com.jk.offermate.data.resume.ResumeTextExtractor
+import com.jk.offermate.work.ImportScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -18,14 +18,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * 简历 ViewModel：导入 PDF → 复制到本地（供预览）+ 端侧解析文本。
- * 不再要求手填岗位/技能；相关性/作答直接以简历文本为上下文。
+ * 简历 ViewModel：导入 PDF → 复制到本地（供预览）+ 端侧解析文本 → 入队 AI 分析 Worker。
+ * AI 结构化落地为记忆通过 [com.jk.offermate.work.AnalyzeResumeWorker] 在后台完成，
+ * 支持退出设置页继续运行，以及在补配置 API Key 后自动重新触发。
  */
 class ResumeViewModel(
     private val repository: ResumeRepository,
     private val extractor: ResumeTextExtractor,
     private val fileStore: ResumeFileStore,
-    private val resumeIngestor: ResumeIngestor
+    private val importScheduler: ImportScheduler
 ) : ViewModel() {
 
     val profile: StateFlow<ResumeProfile> = repository.profile.stateIn(
@@ -46,10 +47,6 @@ class ResumeViewModel(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    /** 简历结构化落地为记忆的进行状态（独立于导入本身）。 */
-    private val _structuring = MutableStateFlow(false)
-    val structuring: StateFlow<Boolean> = _structuring.asStateFlow()
-
     fun onPdfPicked(uri: Uri) {
         viewModelScope.launch {
             _loading.value = true
@@ -59,7 +56,7 @@ class ResumeViewModel(
                 repository.setFilePath(path)
                 val text = extractor.extractText(uri)
                 repository.updateRawText(text)
-                ingestToMemory(text)
+                scheduleAnalysis()
             } catch (e: Exception) {
                 _error.value = e.message ?: "简历解析失败，请重试"
             } finally {
@@ -68,28 +65,18 @@ class ResumeViewModel(
         }
     }
 
-    /** 用户编辑识别文本后手动保存；同时刷新记忆。 */
+    /** 用户编辑识别文本后手动保存；同时重新触发 AI 分析。 */
     fun saveRawText(text: String) {
         viewModelScope.launch {
             repository.updateRawText(text)
-            ingestToMemory(text)
+            scheduleAnalysis()
         }
     }
 
-    /**
-     * 把简历文本结构化落地为分层文件记忆。best-effort：需要 AI（BYOK），
-     * 失败不影响简历导入本身（例如未配置 Key），仅静默跳过。
-     */
-    private suspend fun ingestToMemory(text: String) {
-        if (text.isBlank()) return
-        _structuring.value = true
-        try {
-            resumeIngestor.ingest(text)
-        } catch (_: Exception) {
-            // 记忆结构化失败不阻断简历导入（如无 Key / 网络问题），留待下次保存重试
-        } finally {
-            _structuring.value = false
-        }
+    /** 持久化待分析标记并将 Worker 加入 WorkManager 队列。 */
+    private suspend fun scheduleAnalysis() {
+        repository.setNeedsAiAnalysis(true)
+        importScheduler.enqueueResumeAnalysis()
     }
 
     fun consumeError() { _error.value = null }
@@ -99,9 +86,9 @@ class ResumeViewModel(
             repository: ResumeRepository,
             extractor: ResumeTextExtractor,
             fileStore: ResumeFileStore,
-            resumeIngestor: ResumeIngestor
+            importScheduler: ImportScheduler
         ) = viewModelFactory {
-            initializer { ResumeViewModel(repository, extractor, fileStore, resumeIngestor) }
+            initializer { ResumeViewModel(repository, extractor, fileStore, importScheduler) }
         }
     }
 }

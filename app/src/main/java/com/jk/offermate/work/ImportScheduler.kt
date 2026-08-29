@@ -19,6 +19,13 @@ import java.util.concurrent.TimeUnit
 interface ImportScheduler {
     suspend fun enqueueUrl(url: String): String
     suspend fun enqueueText(text: String, sourceUrl: String = ""): String
+
+    /**
+     * 将简历 AI 分析任务加入 WorkManager 队列。
+     * 使用 [ExistingWorkPolicy.REPLACE]：若队列中已有同名任务则替换。
+     * 任务失败（如 Key 未配置）时不自动重试；由调用方在 Key 更新后重新入队。
+     */
+    fun enqueueResumeAnalysis()
 }
 
 /**
@@ -57,6 +64,20 @@ class WorkManagerImportScheduler(
             )
         )
         return id
+    }
+
+    override fun enqueueResumeAnalysis() {
+        val request = OneTimeWorkRequestBuilder<AnalyzeResumeWorker>()
+            .setConstraints(
+                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+            )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            AnalyzeResumeWorker.WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
     }
 
     private fun enqueue(id: String, data: Data) {

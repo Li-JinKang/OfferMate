@@ -73,5 +73,6 @@ class NotificationHelper(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "offermate_analysis"
         const val FOREGROUND_ID = 1001
+        const val RESUME_FOREGROUND_ID = 1002
     }
 }

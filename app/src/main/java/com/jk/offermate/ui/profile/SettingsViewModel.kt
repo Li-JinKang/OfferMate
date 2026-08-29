@@ -6,10 +6,12 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jk.offermate.agent.mcp.McpServerConfig
 import com.jk.offermate.agent.mcp.McpToolRepository
+import com.jk.offermate.data.resume.ResumeRepository
 import com.jk.offermate.data.settings.AiProvider
 import com.jk.offermate.data.settings.AppSettings
 import com.jk.offermate.data.settings.ProviderConfig
 import com.jk.offermate.data.settings.SettingsRepository
+import com.jk.offermate.work.ImportScheduler
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -40,7 +42,9 @@ data class SettingsUiState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModel(
     private val repository: SettingsRepository,
-    private val mcpToolRepository: McpToolRepository? = null
+    private val mcpToolRepository: McpToolRepository? = null,
+    private val resumeRepository: ResumeRepository? = null,
+    private val importScheduler: ImportScheduler? = null
 ) : ViewModel() {
 
     private val selectedProviderId = MutableStateFlow(AiProvider.DEEPSEEK.id)
@@ -77,10 +81,13 @@ class SettingsViewModel(
         selectedProviderId.value = provider.id
     }
 
-    /** 启用当前选中服务商（保存 Key/模型/接口地址并设为生效）。 */
+    /** 启用当前选中服务商（保存 Key/模型/接口地址并设为生效）。若有待分析简历则重新触发。 */
     fun onEnable(apiKey: String, model: String, baseUrl: String) {
         viewModelScope.launch {
             repository.enableProvider(selectedProviderId.value, apiKey, model, baseUrl)
+            if (apiKey.isNotBlank() && resumeRepository?.needsAiAnalysis?.first() == true) {
+                importScheduler?.enqueueResumeAnalysis()
+            }
         }
     }
 
@@ -124,9 +131,11 @@ class SettingsViewModel(
     companion object {
         fun provideFactory(
             repository: SettingsRepository,
-            mcpToolRepository: McpToolRepository? = null
+            mcpToolRepository: McpToolRepository? = null,
+            resumeRepository: ResumeRepository? = null,
+            importScheduler: ImportScheduler? = null
         ) = viewModelFactory {
-            initializer { SettingsViewModel(repository, mcpToolRepository) }
+            initializer { SettingsViewModel(repository, mcpToolRepository, resumeRepository, importScheduler) }
         }
     }
 }

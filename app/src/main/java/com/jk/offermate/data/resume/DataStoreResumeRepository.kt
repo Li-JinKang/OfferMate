@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.jk.offermate.agent.resume.ResumeProfile
@@ -32,6 +33,10 @@ class DataStoreResumeRepository(context: Context) : ResumeRepository {
         prefs[KEY_FILE_PATH]?.takeIf { it.isNotBlank() }
     }
 
+    override val needsAiAnalysis: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_NEEDS_AI_ANALYSIS] ?: false
+    }
+
     override suspend fun save(targetRole: String, skillsCsv: String, rawText: String) {
         dataStore.edit { prefs ->
             prefs[KEY_TARGET_ROLE] = targetRole.trim()
@@ -50,10 +55,15 @@ class DataStoreResumeRepository(context: Context) : ResumeRepository {
         }
     }
 
+    override suspend fun setNeedsAiAnalysis(needs: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_NEEDS_AI_ANALYSIS] = needs }
+    }
+
     private companion object {
         val KEY_TARGET_ROLE = stringPreferencesKey("target_role")
         val KEY_SKILLS = stringPreferencesKey("skills_csv")
         val KEY_RAW_TEXT = stringPreferencesKey("raw_text")
         val KEY_FILE_PATH = stringPreferencesKey("resume_file_path")
+        val KEY_NEEDS_AI_ANALYSIS = booleanPreferencesKey("needs_ai_analysis")
     }
 }
