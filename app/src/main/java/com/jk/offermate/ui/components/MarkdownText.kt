@@ -16,9 +16,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +47,7 @@ import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.State
 import com.mikepenz.markdown.model.markdownAnimations
+import kotlinx.coroutines.flow.conflate
 
 private val CodeBackground = Color(0xFFF6F7FB)
 
@@ -87,36 +92,26 @@ fun MarkdownText(
     // 解析走 [MarkdownStateCache]，不再用 rememberMarkdownState(immediate = true)：后者会在
     // **每次重组**都同步全量重解析（parseBlocking 写在组合体里、不在 remember 内），
     // 流式期间等于每个 token 卡一次主线程。详见 MarkdownStateCache 的注释。
-    val cached = remember(markdown, mode) {
-        if (mode == MarkdownParseMode.BLOCKING) {
-            MarkdownStateCache.getOrParseBlocking(markdown) as? State.Success
-        } else {
-            MarkdownStateCache.peek(markdown)
-        }
+    val current = if (mode == MarkdownParseMode.BLOCKING) {
+        remember(markdown) { MarkdownStateCache.getOrParseBlocking(markdown) as? State.Success }
+    } else {
+        rememberStreamingMarkdownState(markdown, store = mode == MarkdownParseMode.ASYNC_CACHED)
     }
-    // 不能用 produceState：它内部的 `remember { mutableStateOf(initialValue) }` **没有 key**，
-    // initialValue 只在首次组合生效。内容变化时它会保留上一份解析结果，而生产者又因
-    // `cached != null` 直接 return，于是永远停在旧内容上——表现为“输出完成后一部分内容不显示，
-    // 重进页面才正常”。这里用带 key 的 remember 显式持有异步结果。
-    val asyncParsed = remember(markdown, mode) { mutableStateOf<State.Success?>(null) }
-    LaunchedEffect(markdown, mode) {
-        if (cached != null) return@LaunchedEffect
-        asyncParsed.value = MarkdownStateCache.warm(
-            content = markdown,
-            store = mode != MarkdownParseMode.ASYNC_TRANSIENT
-        ) as? State.Success
-    }
-    val parsed = cached ?: asyncParsed.value
+    // 渲染拆到单独的 composable：流式尾巴的 markdown 参数每个出字节拍都在变，但解析结果只在
+    // 后台解析完成时才变。分开之后，解析还没追上的那些重组会在这里整棵子树跳过。
+    // 需要 @Immutable 包一层：State.Success 持有 intellij-markdown 的 ASTNode，
+    // 被 Compose 推断为 unstable，直接当参数传的话这个 composable 永远不可跳过。
+    MarkdownContent(remember(current) { ParsedMarkdown(current) }, modifier)
+}
 
-    // 保留上一次成功的解析结果：内容刚变化、新的解析还没回来的那几帧继续渲染旧内容，
-    // 而不是回落到 State.Loading（空白 Box）造成闪白。用普通字段而非 snapshot state，
-    // 避免在组合期间写 state 触发额外重组。
-    val holder = remember { LastSuccessHolder() }
-    val current = parsed ?: holder.value
-    if (parsed != null) holder.value = parsed
+/** 让解析结果可以作为稳定参数传递，见 [MarkdownText] 里的说明。 */
+@Immutable
+private class ParsedMarkdown(val state: State.Success?)
 
+@Composable
+private fun MarkdownContent(parsed: ParsedMarkdown, modifier: Modifier) {
     Markdown(
-        state = current ?: State.Loading(),
+        state = parsed.state ?: State.Loading(),
         modifier = modifier,
         colors = markdownColor(
             text = TextPrimary,
@@ -156,9 +151,43 @@ fun MarkdownText(
     )
 }
 
-/** 承载上一次成功解析结果的普通持有者（非 snapshot state，写入不触发重组）。 */
-private class LastSuccessHolder {
-    var value: State.Success? = null
+/**
+ * 流式内容的解析状态：**不随内容变化重启解析**，而是让一个常驻协程持续追赶最新文本。
+ *
+ * 之前的写法是 `LaunchedEffect(markdown) { warm(markdown) }` + `remember(markdown) { mutableStateOf(null) }`，
+ * 在流式尾巴上是坏的：打字机每帧推进文本，于是每帧都会
+ * 1) 取消正在跑的后台解析，2) 重建持有结果的 state，把上一帧刚解析好的结果一起丢掉。
+ * 而一次「主线程 → Dispatchers.Default → 解析 → 回主线程」的来回几乎不可能在一帧内跑完，
+ * 结果只有在打字机追平、挂起等下一个 token 的那个空隙里解析才能落地一次——
+ * 表现为文字一块一块往外蹦；尾块更长的表格/代码块甚至连这个空隙都赢不下来，
+ * 于是整段要等流结束切回 [MarkdownParseMode.BLOCKING] 才一次性出现。
+ *
+ * 这里改为 `snapshotFlow(...).conflate().collect`：
+ * - 解析**永不被取消**，每一次都跑到完成并立刻发布，出字速度由解析吞吐决定而不是「运气」；
+ * - `conflate` 保证同一时刻只有一个解析在飞，中间态被丢弃，CPU 占用有上界；
+ * - 结果 state 跨内容变化保留，短暂落后一小段（正在解析的那几个字符）而不是回退到空白。
+ *
+ * @param store 是否把解析结果写入 LRU。流式尾巴必须为 false，见 [MarkdownStateCache.warm]。
+ */
+@Composable
+private fun rememberStreamingMarkdownState(markdown: String, store: Boolean): State.Success? {
+    val latest by rememberUpdatedState(markdown)
+    val parsed = remember { mutableStateOf<State.Success?>(null) }
+
+    // 已缓存（如刚刚定稿的块）直接同步用上，首帧就有内容，不闪空白也不显示落后版本。
+    val exact = remember(markdown) { MarkdownStateCache.peek(markdown) }
+
+    LaunchedEffect(store) {
+        snapshotFlow { latest }
+            .conflate()
+            .collect { text ->
+                val state = MarkdownStateCache.peek(text)
+                    ?: MarkdownStateCache.warm(text, store) as? State.Success
+                // 解析失败时保留上一份结果，不回退到空白。
+                if (state != null) parsed.value = state
+            }
+    }
+    return exact ?: parsed.value
 }
 
 // 对话正文/标题的字号方案。提到顶层常量：这些 TextStyle 不依赖组合环境，
