@@ -111,6 +111,7 @@ fun HomeRoute(
         onToggleManualPaste = viewModel::onToggleManualPaste,
         onPasteAnalyze = viewModel::onPasteAnalyze,
         onOpenPost = { post -> onOpenPost(post.id) },
+        onRetry = viewModel::onRetry,
         onOpenSettings = onOpenSettings,
         onTogglePin = viewModel::onTogglePin,
         onDelete = viewModel::onDelete,
@@ -130,6 +131,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onTogglePin: (Post) -> Unit,
     onDelete: (String) -> Unit,
+    onRetry: (Post) -> Unit = {},
     contentBottomPadding: Dp = 0.dp
 ) {
     LazyColumn(
@@ -183,7 +185,11 @@ fun HomeScreen(
                     onTogglePin = { onTogglePin(post) },
                     onDelete = { onDelete(post.id) }
                 ) {
-                    PostCard(post = post, onOpen = { onOpenPost(post) })
+                    PostCard(
+                        post = post,
+                        onOpen = { onOpenPost(post) },
+                        onRetry = { onRetry(post) }
+                    )
                 }
             }
         }
@@ -383,7 +389,7 @@ private fun SourceFilterRow(
 }
 
 @Composable
-private fun PostCard(post: Post, onOpen: () -> Unit) {
+private fun PostCard(post: Post, onOpen: () -> Unit, onRetry: () -> Unit = {}) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -420,6 +426,41 @@ private fun PostCard(post: Post, onOpen: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            // 失败原因 + 重试入口。通知在未授予 POST_NOTIFICATIONS 时会静默跳过，
+            // 所以这里是用户唯一能确定拿到失败信息的地方。
+            FailureFooter(post = post, onRetry = onRetry)
+        }
+    }
+}
+
+@Composable
+private fun FailureFooter(post: Post, onRetry: () -> Unit) {
+    val reason = post.failureReason
+    if (reason == null && !post.canRetry) return
+
+    Spacer(Modifier.height(8.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (reason != null) {
+            Text(
+                text = reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+        }
+        if (post.canRetry) {
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "重试",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onRetry)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            )
         }
     }
 }

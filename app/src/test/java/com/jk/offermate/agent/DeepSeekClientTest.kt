@@ -4,8 +4,10 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -71,6 +73,68 @@ class DeepSeekClientTest {
         assertThrows(AiException::class.java) {
             runBlocking { client().chat(listOf(ChatMessage(Role.USER, "hi"))) }
         }
+    }
+
+    // ---- 可重试性分类（见 docs/plan/network-resilience.md 第 4 节）----
+
+    @Test
+    fun `401 is classified as non-retryable and points at the api key`() {
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"invalid key"}"""))
+
+        val e = assertThrows(AiException::class.java) {
+            runBlocking { client().chat(listOf(ChatMessage(Role.USER, "hi"))) }
+        }
+
+        assertFalse(e.retryable)
+        assertTrue(e.message!!.contains("API Key"))
+    }
+
+    @Test
+    fun `429 is classified as retryable`() {
+        server.enqueue(MockResponse().setResponseCode(429).setBody("rate limited"))
+
+        val e = assertThrows(AiException::class.java) {
+            runBlocking { client().chat(listOf(ChatMessage(Role.USER, "hi"))) }
+        }
+
+        assertTrue(e.retryable)
+    }
+
+    @Test
+    fun `5xx is classified as retryable`() {
+        server.enqueue(MockResponse().setResponseCode(503).setBody("unavailable"))
+
+        val e = assertThrows(AiException::class.java) {
+            runBlocking { client().chat(listOf(ChatMessage(Role.USER, "hi"))) }
+        }
+
+        assertTrue(e.retryable)
+    }
+
+    /**
+     * 本次事故的核心回归：连接被掀掉时不再裸抛 IOException 穿透到 Worker，
+     * 而是包成 retryable 的 [AiException]，让任务层能走 `Result.retry()`。
+     */
+    @Test
+    fun `connection reset becomes retryable AiException instead of raw IOException`() {
+        // 两次都断开：第二条覆盖"疑似 H2 中断 → 降级 HTTP/1.1 重试一次"也失败的路径
+        repeat(2) { server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START)) }
+
+        val e = assertThrows(AiException::class.java) {
+            runBlocking { client().chat(listOf(ChatMessage(Role.USER, "hi"))) }
+        }
+
+        assertTrue(e.retryable)
+        assertTrue(e.cause is java.io.IOException)
+    }
+
+    @Test
+    fun `blank api key is not retryable`() {
+        val e = assertThrows(AiException::class.java) {
+            runBlocking { client(apiKey = "  ").chat(listOf(ChatMessage(Role.USER, "hi"))) }
+        }
+
+        assertFalse(e.retryable)
     }
 
     @Test

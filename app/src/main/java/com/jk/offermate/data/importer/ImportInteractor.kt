@@ -11,6 +11,7 @@ import com.jk.offermate.data.reader.ImageFetcher
 import com.jk.offermate.data.reader.PostContent
 import com.jk.offermate.data.reader.ReadResult
 import com.jk.offermate.data.repository.CategoryRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 /**
@@ -44,8 +45,7 @@ class ImportInteractor(
 
         val ocrTexts = content.imageUrls.mapNotNull { imageUrl ->
             val bytes = fetcher.fetch(imageUrl) ?: return@mapNotNull null
-            runCatching { recognizer.recognize(bytes, imageUrl) }
-                .getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+            tolerate { recognizer.recognize(bytes, imageUrl) }?.trim()?.takeIf { it.isNotEmpty() }
         }
         if (ocrTexts.isEmpty()) return content
 
@@ -73,7 +73,8 @@ class ImportInteractor(
             val questions = analyzer.analyze(content.text)
             ImportResult.Success(content, categorize(questions))
         } catch (e: AiException) {
-            ImportResult.Failed(e.message ?: "分析失败")
+            // retryable 原样透传给任务层，由它决定重试还是落终态失败
+            ImportResult.Failed(e.message ?: "分析失败", retryable = e.retryable)
         }
 
     /**
@@ -85,17 +86,32 @@ class ImportInteractor(
         if (questions.isEmpty()) return questions
 
         val existing = categoryRepository
-            ?.let { runCatching { it.observeCategories().first() }.getOrDefault(emptyList()) }
+            ?.let { repo -> tolerate { repo.observeCategories().first() } }
             ?: emptyList()
 
-        val categorized = runCatching { strategy.categorize(questions, existing) }.getOrDefault(questions)
+        val categorized = tolerate { strategy.categorize(questions, existing) } ?: questions
 
         categoryRepository?.let { repo ->
             categorized.map { it.category }
                 .filter { it.isNotBlank() && it !in existing }
                 .distinct()
-                .forEach { runCatching { repo.addCategory(it) } }
+                .forEach { tolerate { repo.addCategory(it) } }
         }
         return categorized
     }
+
+    /**
+     * 执行 [block]，失败返回 null——但**放行 [CancellationException]**。
+     *
+     * 不用 `runCatching`：它会把协程取消也当成普通失败吞掉，导致任务被取消后流程继续往下跑，
+     * 最终在已取消的 scope 上写库（见 docs/plan/network-resilience.md 第 4 节）。
+     */
+    private suspend fun <T> tolerate(block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (c: CancellationException) {
+            throw c
+        } catch (e: Exception) {
+            null
+        }
 }

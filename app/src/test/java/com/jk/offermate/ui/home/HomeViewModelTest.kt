@@ -41,15 +41,20 @@ class HomeViewModelTest {
             texts += text
             return "id-t-${texts.size}"
         }
+        val retried = mutableListOf<Pair<String, String>>()
+        override suspend fun retryUrl(id: String, url: String) { retried += id to url }
+        override fun enqueueResumeAnalysis() {}
     }
 
     private class FakeResumeRepository(profile: ResumeProfile) : ResumeRepository {
         private val state = MutableStateFlow(profile)
         override val profile: Flow<ResumeProfile> = state
         override val resumeFilePath: Flow<String?> = MutableStateFlow(null)
+        override val needsAiAnalysis: Flow<Boolean> = MutableStateFlow(false)
         override suspend fun save(targetRole: String, skillsCsv: String, rawText: String) {}
         override suspend fun updateRawText(rawText: String) {}
         override suspend fun setFilePath(path: String?) {}
+        override suspend fun setNeedsAiAnalysis(needs: Boolean) {}
     }
 
     private class FakeSettingsRepository(apiKey: String) : SettingsRepository {

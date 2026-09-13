@@ -1,6 +1,7 @@
 package com.jk.offermate.agent.mcp
 
 import com.jk.offermate.agent.JsonSupport
+import com.jk.offermate.data.net.HttpClients
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -17,7 +18,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -142,11 +142,8 @@ class HttpMcpClient(
         const val PROTOCOL_VERSION = "2025-06-18"
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
-        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .callTimeout(90, TimeUnit.SECONDS)
-            .build()
+        /** 统一走 [HttpClients.mcp]：共享连接池 + 重试 + 阶段日志。 */
+        fun defaultClient(): OkHttpClient = HttpClients.mcp
     }
 }
 

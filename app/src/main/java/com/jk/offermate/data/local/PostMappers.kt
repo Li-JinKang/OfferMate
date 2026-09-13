@@ -30,7 +30,10 @@ object PostMappers {
             category = platformName(platform),
             parsedQuestionCount = entity.questionCount,
             badge = if (status == ImportStatus.DONE) null else PostBadge.Label(status.label),
-            pinned = entity.pinned
+            pinned = entity.pinned,
+            status = status,
+            failureReason = entity.failureReason?.takeIf { it.isNotBlank() },
+            sourceUrl = entity.resolvedUrl?.takeIf { it.isNotBlank() } ?: entity.url
         )
     }
 

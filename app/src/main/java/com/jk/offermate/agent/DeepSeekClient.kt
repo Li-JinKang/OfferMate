@@ -7,6 +7,10 @@ import com.jk.offermate.agent.tool.ToolCall
 import com.jk.offermate.agent.tool.ToolCallAccumulator
 import com.jk.offermate.agent.tool.ToolCallingLlm
 import com.jk.offermate.agent.tool.ToolSpec
+import com.jk.offermate.data.net.Http2Health
+import com.jk.offermate.data.net.HttpClients
+import com.jk.offermate.data.net.NetErrors
+import com.jk.offermate.data.net.RetryInterceptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArrayBuilder
@@ -22,15 +26,22 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.concurrent.TimeUnit
+import okhttp3.Response
+import java.io.IOException
 
 /**
  * DeepSeek 的 [AiClient] 实现（OpenAI 兼容 /chat/completions）。BYOK：Key 与模型名运行时读取。
  *
  * 用 OkHttp 直连 + kotlinx-serialization 运行时 API 构造/解析（不需要 serialization 编译器插件）。
  * baseUrl 与 client 可注入，便于用 MockWebServer 做 JVM 测试。
+ *
+ * 网络失败契约（见 docs/plan/network-resilience.md）：
+ * - 所有 [IOException] 统一包成 `AiException(retryable = true)`，不再裸抛穿透到 Worker；
+ * - HTTP 状态码按可重试性分类（401/402/403/404 不重试，408/429/5xx 重试）；
+ * - 疑似 HTTP/2 连接被掀掉时，降级到 HTTP/1.1 重试一次并记入 [Http2Health]。
  */
 class DeepSeekClient(
     private val apiKeyProvider: suspend () -> String,
@@ -39,6 +50,25 @@ class DeepSeekClient(
     private val client: OkHttpClient = defaultClient(),
     private val logger: AgentLogger = NoopAgentLogger
 ) : AiClient, ToolCallingLlm, StreamingLlm {
+
+    /**
+     * 流式（SSE）专用：与 [client] 同配置，但**摘掉 [RetryInterceptor]**。
+     * 增量已经透出后再重试会产生重复文本，其瞬时失败交由任务层整轮重试。
+     */
+    private val streamClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .apply { interceptors().removeAll { it is RetryInterceptor } }
+            .build()
+    }
+
+    /** HTTP/1.1 降级客户端：每个请求独占连接，把连接故障隔离在单个请求内。 */
+    private val http1Client: OkHttpClient by lazy {
+        client.newBuilder().protocols(listOf(Protocol.HTTP_1_1)).build()
+    }
+
+    private val streamHttp1Client: OkHttpClient by lazy {
+        streamClient.newBuilder().protocols(listOf(Protocol.HTTP_1_1)).build()
+    }
 
     override suspend fun chat(messages: List<ChatMessage>): String {
         val model = modelProvider()
@@ -76,27 +106,18 @@ class DeepSeekClient(
         }
     }
 
-    /** 发送请求，返回原始响应文本；非 2xx 抛 [AiException]。 */
+    /** 发送请求，返回原始响应文本；非 2xx 与网络异常统一抛 [AiException]。 */
     private suspend fun post(bodyJson: String): String {
-        val apiKey = apiKeyProvider().trim()
-        if (apiKey.isEmpty()) throw AiException("未配置 API Key，请在设置中填写")
-
-        val endpoint = baseUrlProvider().trim().trimEnd('/') + "/chat/completions"
-        val request = Request.Builder()
-            .url(endpoint)
-            .header("Authorization", "Bearer $apiKey")
-            .header("Content-Type", "application/json")
-            .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+        val request = buildRequest(bodyJson, stream = false)
 
         val (code, text) = withContext(Dispatchers.IO) {
-            client.newCall(request).execute().use { resp ->
+            executeWithHttp1Fallback(request, http2Client = client, http1Client = http1Client, allowReplay = true) { resp ->
                 resp.code to resp.body?.string().orEmpty()
             }
         }
         if (code !in 200..299) {
             logger.w { "AI 调用失败：HTTP $code ${AgentLogger.brief(text, 200)}" }
-            throw AiException("DeepSeek 调用失败（HTTP $code）：${text.take(300)}")
+            throw httpError(code, text)
         }
         return text
     }
@@ -106,27 +127,23 @@ class DeepSeekClient(
      * 工具调用增量按 index 拼接。返回一轮的最终结果（工具调用或最终文本）。
      */
     private suspend fun postStream(bodyJson: String, onDelta: (String) -> Unit): LlmTurn {
-        val apiKey = apiKeyProvider().trim()
-        if (apiKey.isEmpty()) throw AiException("未配置 API Key，请在设置中填写")
-
-        val endpoint = baseUrlProvider().trim().trimEnd('/') + "/chat/completions"
-        val request = Request.Builder()
-            .url(endpoint)
-            .header("Authorization", "Bearer $apiKey")
-            .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream")
-            .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+        val request = buildRequest(bodyJson, stream = true)
 
         val buffer = StreamingTextBuffer(onDelta)
         val toolAcc = ToolCallAccumulator()
 
         withContext(Dispatchers.IO) {
-            client.newCall(request).execute().use { resp ->
+            // allowReplay = false：SSE 一旦吐出增量就不能重放，否则文本重复。
+            executeWithHttp1Fallback(
+                request,
+                http2Client = streamClient,
+                http1Client = streamHttp1Client,
+                allowReplay = false
+            ) { resp ->
                 if (resp.code !in 200..299) {
                     val err = resp.body?.string().orEmpty()
                     logger.w { "AI 流式调用失败：HTTP ${resp.code} ${AgentLogger.brief(err, 200)}" }
-                    throw AiException("DeepSeek 调用失败（HTTP ${resp.code}）：${err.take(300)}")
+                    throw httpError(resp.code, err)
                 }
                 val source = resp.body?.source() ?: throw AiException("DeepSeek 流式响应为空")
                 while (true) {
@@ -149,6 +166,77 @@ class DeepSeekClient(
         }
         buffer.flushRemaining()
         return LlmTurn.Final(InlineToolCallParser.strip(raw))
+    }
+
+    private suspend fun buildRequest(bodyJson: String, stream: Boolean): Request {
+        val apiKey = apiKeyProvider().trim()
+        if (apiKey.isEmpty()) throw AiException("未配置 API Key，请在设置中填写")
+
+        val endpoint = baseUrlProvider().trim().trimEnd('/') + "/chat/completions"
+        return Request.Builder()
+            .url(endpoint)
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .apply { if (stream) header("Accept", "text/event-stream") }
+            .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+    }
+
+    /**
+     * 执行请求，并把网络异常统一翻译成 [AiException]。
+     *
+     * 若该 host 已被 [Http2Health] 标记降级，直接用 [http1Client]；否则用 [http2Client]，
+     * 遇到"连接被掀掉"这类故障时记一次账，并在 [allowReplay] 为 true 时用 HTTP/1.1 重试一次。
+     */
+    private fun <T> executeWithHttp1Fallback(
+        request: Request,
+        http2Client: OkHttpClient,
+        http1Client: OkHttpClient,
+        allowReplay: Boolean,
+        block: (Response) -> T
+    ): T {
+        val host = request.url.host
+        val degraded = Http2Health.shouldAvoidHttp2(host)
+
+        try {
+            val result = (if (degraded) http1Client else http2Client).newCall(request).execute().use(block)
+            Http2Health.recordSuccess(host)
+            return result
+        } catch (e: IOException) {
+            val abort = NetErrors.looksLikeConnectionAbort(e)
+            if (abort) Http2Health.recordAbort(host)
+
+            if (abort && !degraded && allowReplay) {
+                logger.w { "疑似 HTTP/2 连接中断，降级 HTTP/1.1 重试一次：${e.javaClass.simpleName}:${e.message}" }
+                try {
+                    return http1Client.newCall(request).execute().use(block)
+                } catch (retryError: IOException) {
+                    throw networkException(retryError)
+                }
+            }
+            throw networkException(e)
+        }
+    }
+
+    private fun networkException(e: IOException) = AiException(
+        message = "模型调用失败：${NetErrors.userMessage(e)}",
+        retryable = NetErrors.isTransient(e),
+        cause = e
+    )
+
+    /** HTTP 状态码 → 可重试性 + 可读文案。分类矩阵见 docs/plan/network-resilience.md 第 4 节。 */
+    private fun httpError(code: Int, body: String): AiException {
+        val hint = when (code) {
+            401, 403 -> "API Key 无效或无权限，请在设置中检查"
+            402 -> "账户余额不足，请充值后重试"
+            404 -> "接口地址或模型不存在，请检查 baseUrl 与模型名"
+            408 -> "服务响应超时"
+            429 -> "请求过于频繁，稍后会自动重试"
+            in 500..599 -> "服务暂时不可用"
+            else -> "调用失败"
+        }
+        val retryable = code == 408 || code == 429 || code in 500..599
+        return AiException("DeepSeek $hint（HTTP $code）：${body.take(300)}", retryable)
     }
 
     /** 解析单个 SSE data chunk，把 delta.content 喂给缓冲、delta.tool_calls 累积到 [toolAcc]。 */
@@ -252,7 +340,7 @@ class DeepSeekClient(
         val root = try {
             JsonSupport.json.parseToJsonElement(raw).jsonObject
         } catch (e: Exception) {
-            throw AiException("无法解析 DeepSeek 响应：${raw.take(200)}", e)
+            throw AiException("无法解析 DeepSeek 响应：${raw.take(200)}", cause = e)
         }
         val choices = root["choices"]?.jsonArray
             ?: throw AiException("DeepSeek 响应缺少 choices：${raw.take(200)}")
@@ -265,7 +353,7 @@ class DeepSeekClient(
         val root = try {
             JsonSupport.json.parseToJsonElement(raw).jsonObject
         } catch (e: Exception) {
-            throw AiException("无法解析 DeepSeek 响应：${raw.take(200)}", e)
+            throw AiException("无法解析 DeepSeek 响应：${raw.take(200)}", cause = e)
         }
         val choices = root["choices"]?.jsonArray
             ?: throw AiException("DeepSeek 响应缺少 choices：${raw.take(200)}")
@@ -283,13 +371,11 @@ class DeepSeekClient(
         /** DeepSeek 支持的最大输出 token（deepseek-chat 上限 8192），显式拉满以防截断。 */
         const val MAX_OUTPUT_TOKENS = 8192
 
-        /** DeepSeek 生成长文本较慢，给足读超时，避免 SocketTimeout。 */
-        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
-            .callTimeout(180, TimeUnit.SECONDS)
-            .build()
+        /**
+         * 统一走 [HttpClients.llm]：共享连接池、HTTP/2 保活、重试拦截器、阶段日志。
+         * 注意那里**不设 callTimeout**——它会把 RetryInterceptor 的后续 attempt 砍掉。
+         */
+        fun defaultClient(): OkHttpClient = HttpClients.llm
     }
 }
 

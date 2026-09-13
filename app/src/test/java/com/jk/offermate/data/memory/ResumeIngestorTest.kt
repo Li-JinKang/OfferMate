@@ -28,7 +28,9 @@ class ResumeIngestorTest {
         val ai = FakeAiClient { msgs ->
             val sys = msgs.firstOrNull()?.content.orEmpty()
             when {
-                sys.contains("简历结构化助手") -> structuredJson
+                // 按结构化提示词里的稳定措辞路由（原来匹配"简历结构化助手"，
+                // 提示词改写后已不存在，导致 fake 落到 else 分支返回 "{}"）
+                sys.contains("结构化 JSON") -> structuredJson
                 sys.contains("求职方向") -> matchJson
                 else -> "{}"
             }

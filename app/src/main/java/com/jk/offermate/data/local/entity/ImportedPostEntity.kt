@@ -18,5 +18,10 @@ data class ImportedPostEntity(
     val questionCount: Int,
     val importedAt: Long,
     val updatedAt: Long,
-    val pinned: Boolean = false
+    val pinned: Boolean = false,
+    /**
+     * 终态失败的原因，直接透到首页卡片。
+     * 原先只存 status=FAILED，用户只能看到"失败"两个字，排查全靠 Logcat。
+     */
+    val failureReason: String? = null
 )

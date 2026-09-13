@@ -24,5 +24,16 @@ data class Post(
     val category: String,
     val parsedQuestionCount: Int,
     val badge: PostBadge? = null,
-    val pinned: Boolean = false
-)
+    val pinned: Boolean = false,
+    /** 导入状态。UI 据此决定是否展示失败原因与重试入口。 */
+    val status: ImportStatus = ImportStatus.DONE,
+    /** 终态失败的原因，仅在 [status] 为失败/需手动粘贴时有值。 */
+    val failureReason: String? = null,
+    /** 原始链接。手动粘贴的记录没有真实链接，此时不提供"重试"（无正文可重跑）。 */
+    val sourceUrl: String = ""
+) {
+    /** 可一键重试：处于失败态且有真实链接可重新读取。 */
+    val canRetry: Boolean
+        get() = (status == ImportStatus.FAILED || status == ImportStatus.NEEDS_MANUAL_INPUT) &&
+            sourceUrl.startsWith("http")
+}

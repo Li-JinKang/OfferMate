@@ -115,6 +115,19 @@ class HomeViewModel(
         viewModelScope.launch { postRepository.delete(postId) }
     }
 
+    /**
+     * 失败卡片上的「重试」：复用原记录 id 重跑，不新建卡片。
+     * 前置校验照旧（Key 未配置时拦下，避免重试注定再失败一次）。
+     */
+    fun onRetry(post: com.jk.offermate.domain.model.Post) {
+        if (!post.canRetry) return
+        viewModelScope.launch {
+            if (!canAnalyze()) return@launch
+            importScheduler.retryUrl(post.id, post.sourceUrl)
+            _uiState.update { it.copy(message = "已重新加入后台分析") }
+        }
+    }
+
     fun onConsumeToast() {
         _uiState.update { it.copy(toast = null) }
     }

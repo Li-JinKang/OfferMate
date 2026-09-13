@@ -83,6 +83,14 @@ android {
     buildFeatures {
         compose true
     }
+
+    testOptions {
+        unitTests {
+            // 让 JVM 单测里的 android.util.Log 调用返回默认值而不是抛
+            // "not mocked"，网络层（data/net）用 Logcat 打阶段日志，需要它才能被单测覆盖。
+            returnDefaultValues = true
+        }
+    }
 }
 
 // 使用 AGP 内置 Kotlin 的扩展配置 JVM 目标
