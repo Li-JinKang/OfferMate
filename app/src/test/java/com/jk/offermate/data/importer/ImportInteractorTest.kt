@@ -15,6 +15,7 @@ import com.jk.offermate.data.reader.PostContent
 import com.jk.offermate.data.reader.UrlResolver
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -116,5 +117,27 @@ class ImportInteractorTest {
         val result = interactor.importFromText("正文")
 
         assertTrue(result is ImportResult.Failed)
+        // Key 未配置属确定性失败，不能重试
+        assertFalse((result as ImportResult.Failed).retryable)
+    }
+
+    @Test
+    fun `propagates retryable flag from AiException to ImportResult`() = runTest {
+        val throwingPipeline = AnalysisPipeline(
+            extractor = QuestionExtractor(
+                FakeAiClient { _: List<ChatMessage> ->
+                    throw AiException("模型调用失败：网络连接被中断", retryable = true)
+                }
+            ),
+            matcher = RelevanceMatcher(FakeAiClient.returning("")),
+            answerer = AnswerGenerator(FakeAiClient.returning(""))
+        )
+        val interactor = ImportInteractor(reader(html = null), throwingPipeline)
+
+        val result = interactor.importFromText("正文")
+
+        assertTrue(result is ImportResult.Failed)
+        assertTrue((result as ImportResult.Failed).retryable)
+        assertTrue(result.reason.contains("网络连接被中断"))
     }
 }

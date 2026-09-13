@@ -25,8 +25,13 @@ interface ImportedPostDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(post: ImportedPostEntity)
 
-    @Query("UPDATE imported_post SET status = :status, updatedAt = :updatedAt WHERE id = :id")
+    /** 状态流转。同时清掉上一次的失败原因，避免重试成功后旧原因残留。 */
+    @Query("UPDATE imported_post SET status = :status, failureReason = NULL, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateStatus(id: String, status: String, updatedAt: Long)
+
+    /** 落终态失败：状态 + 可读原因一起写。 */
+    @Query("UPDATE imported_post SET status = :status, failureReason = :reason, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateFailure(id: String, status: String, reason: String?, updatedAt: Long)
 
     @Query("DELETE FROM imported_post WHERE id = :id")
     suspend fun delete(id: String)

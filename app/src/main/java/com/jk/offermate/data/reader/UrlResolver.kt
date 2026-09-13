@@ -1,8 +1,8 @@
 package com.jk.offermate.data.reader
 
+import com.jk.offermate.data.net.HttpClients
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
 /**
  * 展开分享短链（如 xhslink.cn）到真实 URL。
@@ -35,11 +35,7 @@ class OkHttpUrlResolver(
             "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
+        /** 统一走 [HttpClients.page]：共享连接池 + 重试 + 阶段日志。 */
+        fun defaultClient(): OkHttpClient = HttpClients.page
     }
 }

@@ -24,7 +24,16 @@ class PostStoreTest {
         override suspend fun findById(id: String): ImportedPostEntity? = posts.value[id]
         override suspend fun upsert(post: ImportedPostEntity) { posts.value = posts.value + (post.id to post) }
         override suspend fun updateStatus(id: String, status: String, updatedAt: Long) {
-            posts.value[id]?.let { posts.value = posts.value + (id to it.copy(status = status, updatedAt = updatedAt)) }
+            posts.value[id]?.let {
+                posts.value = posts.value +
+                    (id to it.copy(status = status, failureReason = null, updatedAt = updatedAt))
+            }
+        }
+        override suspend fun updateFailure(id: String, status: String, reason: String?, updatedAt: Long) {
+            posts.value[id]?.let {
+                posts.value = posts.value +
+                    (id to it.copy(status = status, failureReason = reason, updatedAt = updatedAt))
+            }
         }
         override suspend fun setPinned(id: String, pinned: Boolean, updatedAt: Long) {
             posts.value[id]?.let { posts.value = posts.value + (id to it.copy(pinned = pinned, updatedAt = updatedAt)) }
@@ -118,6 +127,24 @@ class PostStoreTest {
 
         store.markFailed("p1")
         assertEquals(ImportStatus.FAILED.name, postDao.findById("p1")!!.status)
+    }
+
+    @Test
+    fun `markFailed persists reason and status change clears it`() = runTest {
+        store.createPending("p1", "https://www.nowcoder.com/x")
+
+        store.markFailed("p1", "网络连接被中断")
+        postDao.findById("p1")!!.let {
+            assertEquals(ImportStatus.FAILED.name, it.status)
+            assertEquals("网络连接被中断", it.failureReason)
+        }
+
+        // 重试时状态回到 PENDING，旧原因必须清掉，否则会残留在卡片上
+        store.markStatus("p1", ImportStatus.PENDING)
+        postDao.findById("p1")!!.let {
+            assertEquals(ImportStatus.PENDING.name, it.status)
+            assertNull(it.failureReason)
+        }
     }
 
     @Test

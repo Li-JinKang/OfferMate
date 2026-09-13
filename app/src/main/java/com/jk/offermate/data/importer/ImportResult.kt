@@ -15,6 +15,12 @@ sealed interface ImportResult {
     /** 自动读取失败，需要用户手动粘贴正文。 */
     data class NeedsManualInput(val resolvedUrl: String, val reason: String) : ImportResult
 
-    /** 分析阶段失败（如 Key 未配置、模型调用出错）。 */
-    data class Failed(val reason: String) : ImportResult
+    /**
+     * 分析阶段失败（如 Key 未配置、模型调用出错）。
+     *
+     * [retryable] 决定任务层是走 `Result.retry()` 还是落终态 FAILED：
+     * 网络抖动/限流/5xx 为 true，Key 无效、余额不足、模型输出不可解析为 false。
+     * 分类矩阵见 docs/plan/network-resilience.md 第 4 节。
+     */
+    data class Failed(val reason: String, val retryable: Boolean = false) : ImportResult
 }

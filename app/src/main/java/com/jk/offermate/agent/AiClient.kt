@@ -29,5 +29,15 @@ interface AiClient {
     suspend fun chat(messages: List<ChatMessage>): String
 }
 
-/** AI 调用/解析相关异常。 */
-class AiException(message: String, cause: Throwable? = null) : Exception(message, cause)
+/**
+ * AI 调用/解析相关异常。
+ *
+ * [retryable] 是整条导入链路的重试契约：网络抖动、限流、5xx 为 true，任务层会走 `Result.retry()`；
+ * Key 无效、余额不足、模型输出不可解析为 false，重试只会白烧 token。分类矩阵见
+ * docs/plan/network-resilience.md 第 4 节。
+ */
+class AiException(
+    message: String,
+    val retryable: Boolean = false,
+    cause: Throwable? = null
+) : Exception(message, cause)

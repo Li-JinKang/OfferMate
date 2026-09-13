@@ -59,6 +59,8 @@ class PostStore(
                 summary = summary,
                 status = ImportStatus.DONE.name,
                 questionCount = unique.size,
+                // 重试成功后清掉上一次的失败原因
+                failureReason = null,
                 updatedAt = now()
             )
         )
@@ -93,9 +95,14 @@ class PostStore(
         return kept
     }
 
-    suspend fun markNeedsManual(id: String) = markStatus(id, ImportStatus.NEEDS_MANUAL_INPUT)
+    suspend fun markNeedsManual(id: String, reason: String? = null) {
+        postDao.updateFailure(id, ImportStatus.NEEDS_MANUAL_INPUT.name, reason, now())
+    }
 
-    suspend fun markFailed(id: String) = markStatus(id, ImportStatus.FAILED)
+    /** 落终态失败，并保留可读原因供首页展示与用户判断是否重试。 */
+    suspend fun markFailed(id: String, reason: String? = null) {
+        postDao.updateFailure(id, ImportStatus.FAILED.name, reason, now())
+    }
 
     suspend fun delete(id: String) {
         questionDao.deleteByPost(id)

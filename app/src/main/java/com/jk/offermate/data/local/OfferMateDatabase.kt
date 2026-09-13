@@ -23,7 +23,8 @@ import com.jk.offermate.data.local.entity.QuestionEntity
         ChatMessageEntity::class,
         CategoryEntity::class
     ],
-    version = 10,
+    // v11：imported_post 增加 failureReason 列（失败原因落库，供首页展示）
+    version = 11,
     exportSchema = false
 )
 abstract class OfferMateDatabase : RoomDatabase() {
