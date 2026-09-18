@@ -60,11 +60,15 @@ interface DynamicContentReader { suspend fun read(url: String): PostContent? }
 
 ## 6. 纳入路线图（补充到 P2.4）
 
-- [ ] `XhsStateParser`（纯函数）：解析 `__INITIAL_STATE__` JSON → 标题/正文 + JVM 单测（JSON 夹具）。
-- [ ] `XhsWebViewReader : DynamicContentReader`：离屏 WebView + CookieManager 登录态 + JS 注入（路线 A）。
-- [ ] WebView 登录页与登录态持久化/失效处理。
-- [ ] androidTest / 手动验证：真机登录 + 真实链接读取。
-- [ ] （可选，增强）路线 B：WebView 取签名 + OkHttp 调接口。
+> 状态同步（2026-09-18）：静态路线已落地（见第 7 节），登录态路线降级为**后备**，仅当遇到需登录/静态拿不到的笔记再做。
+
+- [x] 解析 `__INITIAL_STATE__` JSON → 标题/正文 + JVM 单测：实现为 `XhsNoteExtractor`（非 `XhsStateParser`），夹具 `xhs_note.html` / `xhs_jsonly.html`；已用真实链接验证。已接入 `HtmlContentExtractor`（小红书域名优先，失败回退 Readability/手动粘贴）。
+- [x] 离屏 WebView 动态读取：实现为**通用** `WebViewContentReader : DynamicContentReader`（真实 UA + 执行 JS + 自然跟随短链 + 轮询取渲染后 DOM），复用 `HtmlContentExtractor`；已接入 `AppContainer`。
+- [ ] `XhsWebViewReader` + `CookieManager` **登录态** + JS 注入（路线 A）：**未实现**（后备方案）。
+- [ ] WebView 登录页与登录态持久化/失效处理：**未实现**（依赖上一条）。
+- [ ] androidTest / 手动验证：真机登录 + 真实链接读取。**未做**（现有真实链接验证走 JVM 探针 `LiveLinkReadingTest`，非真机）。
+- [ ] （可选，增强）路线 B：WebView 取签名 + OkHttp 调接口。**未实现**。
+- [x] 图片面经补充路径：`PostImageExtractor` 提取首个 `imageList` 详情大图 + ML Kit OCR 拼入正文（详见 roadmap「图片面经 OCR」章）。
 
 ## 7. 实现结论（已落地）
 

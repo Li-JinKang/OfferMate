@@ -52,15 +52,18 @@ MemorySummary(conversationId, summary, coveredUpToMessageId, updatedAt)  // 长�
 
 ## 纳入路线图的任务（插入到 roadmap 的 P3 之后、P4 之前，标记为 P3.5）
 
-- [ ] Room：`Conversation` / `ChatMessage` / `MemorySummary` 实体与 DAO。
-- [ ] `TokenEstimator`（启发式）+ 单测。
-- [ ] `ChatMemory` 三种策略实现 + 单测（用 `FakeAiClient` 测 `SummarizingMemory`）。
-- [ ] `ContextAssembler` 组装顺序 + 单测（断言 system/摘要/窗口/当前输入的拼装正确）。
-- [ ] `ConversationRepository` 会话 CRUD + 追加消息 + 加载上下文 + 单测（in-memory Room）。
+> 状态同步（2026-09-18）：勾选按代码实际状态校准。会话层已随"追问/自由对话"落地；**`MemorySummary` + `SummarizingMemory`（跨会话长期摘要）仍未实现**，是本篇唯一的未落地项。
+
+- [~] Room：`ConversationEntity` / `ChatMessageEntity` 实体与 DAO 已实现；**`MemorySummary` 未实现**。
+- [x] `TokenEstimator`（启发式）+ 单测：`HeuristicTokenEstimator` / `HeuristicTokenEstimatorTest`。
+- [~] `ChatMemory`：`MessageWindowMemory` / `TokenWindowMemory` + `ChatMemoryTest` 已实现；**缺 `SummarizingMemory`**。
+- [~] `ContextAssembler` 组装顺序 + `ContextAssemblerTest` 已实现（system + 窗口历史 + 当前输入）；**缺摘要段注入**。简历/档案事实改为工具轮按需拉取（见 [`memory.md`](./memory.md) 第 3 节），不走预注入。
+- [x] `ConversationRepository` 会话 CRUD + 追加消息 + 加载上下文 + `ConversationRepositoryTest`；已支持一题多轮独立会话。
+- [ ] 会话**导出 / 一键删除**（隐私，见上节"全部本地持久化"）：未实现。
 
 ### 验收标准（测试先行）
-- 记忆裁剪：给定超长历史，`MessageWindowMemory`/`TokenWindowMemory` 输出条数/Token 在预算内且保留最新。
-- 摘要记忆：超预算时触发摘要（用 `FakeAiClient` 返回固定摘要），后续发送含摘要且旧消息被裁剪。
-- 上下文顺序：`ContextAssembler` 输出顺序与角色正确。
-- 会话 CRUD 与消息持久化正确。
-- 全程不联网、无真实 Key。
+- [x] 记忆裁剪：给定超长历史，`MessageWindowMemory`/`TokenWindowMemory` 输出条数/Token 在预算内且保留最新。
+- [ ] 摘要记忆：超预算时触发摘要（用 `FakeAiClient` 返回固定摘要），后续发送含摘要且旧消息被裁剪。**未达成（能力未实现）**。
+- [x] 上下文顺序：`ContextAssembler` 输出顺序与角色正确。
+- [x] 会话 CRUD 与消息持久化正确。
+- [x] 全程不联网、无真实 Key。

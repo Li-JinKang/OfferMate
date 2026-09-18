@@ -141,23 +141,34 @@ L3  load_project_detail(profileId, projectId)        → 读 <profileId>/project
 
 ## 7. 落地路线（测试先行，JVM 单测全绿、不联网、无真实 Key）
 
+> 状态同步（2026-09-18）：Step 1–4 主体已落地，勾选按代码实际状态校准。剩余缺口见本节末「仍未落地」。
+
 ### Step 1 — 文件存储层
-- [ ] `MemoryStore`：封装 `filesDir/memory/` 的读写——`index.json` 增删查、记忆集文件夹创建、`profile.md`/`projects/*.md`/`experiences/*.md`/`global.md` 读写。路径与 IO 抽象为可注入接口，用临时目录做 JVM 单测。
-- [ ] 测试：索引读写、记忆集文件夹创建、文件读写、多记忆集并存互不干扰、一键清空。
+- [x] `MemoryStore`（`data/memory/MemoryStore.kt`）：封装 `filesDir/memory/` 的读写——`index.json` 增删查（`listProfiles`/`upsertProfile`/`removeProfile`）、记忆集文件夹创建、`profile.md`（`read/writeProfileOverview`）/`projects/*.md`/`experiences/*.md`（`listDetails`/`read/writeDetail`/`deleteDetail`/`resolveDetailId`）/`global.md`（`read/writeGlobal`）读写、`clearAll`。`rootDir` + `io` 调度器注入，不依赖 `Context`，可用临时目录做 JVM 单测；所有 id 经 `MemoryIds.requireSafe` 校验防路径穿越。
+- [x] 测试：`MemoryStoreTest`（索引读写、文件夹创建、文件读写、多记忆集互不干扰、一键清空）。
 
 ### Step 2 — 简历结构化（经 AiClient，FakeAiClient 可测）
-- [ ] `ResumeStructurer`：简历原文 → `profile.md`（含 brief 列表）+ `projects/*.md` + `experiences/*.md` + 更新 `global.md`。
-- [ ] `ProfileMatcher`：读 `index.json`，按 targetRole 语义判定命中已有记忆集 / 新建，输出 `{matchedProfileId?, inferredTargetRole, summary}`。
-- [ ] 测试：结构化解析、同方向命中覆盖更新、新方向新建文件夹并追加 index（旧记忆集不受影响）。
+- [x] `ResumeStructurer`（`agent/resume/`）：简历原文 → `profile.md`（含 brief 列表）+ `projects/*.md` + `experiences/*.md` + 更新 `global.md`。
+- [x] `ProfileMatcher`（`agent/resume/`）：读 `index.json`，按 targetRole 语义判定命中已有记忆集 / 新建。
+- [x] `ResumeIngestor`（`data/memory/`）编排「结构化 → 方向匹配 → 写入记忆文件」；落地入口为 `work/AnalyzeResumeWorker`（后台运行，Key 补填后由 `SettingsViewModel.onEnable` 重新触发）。
+- [x] 测试：`ResumeStructurerTest`、`ProfileMatcherTest`、`ResumeIngestorTest`（结构化解析、同方向命中覆盖、新方向新建并追加 index）。
+- [ ] `resume.txt` 简历原文留档（2.5）：当前原文存于 DataStore + `ResumeFileStore`，**未**落在 `memory/<profileId>/` 内。
 
 ### Step 3 — 分级记忆 tool 族
-- [ ] `list_memory_profiles`（读 index） / `load_profile_overview(query?)`（读 profile.md+global.md） / `load_project_detail` / `load_experience_detail`（读对应细节文件），注册进共享 `ToolRegistry`。
-- [ ] 测试：L1 返回全部记忆集摘要；L2 按 query 过滤概览；L3 返回指定文件 detail；跨记忆集加载不串号；缺失 id 优雅报错。
+- [x] `agent/tool/MemoryTools.kt`：`ListMemoryProfilesTool` / `LoadProfileOverviewTool`(query 过滤) / `LoadProjectDetailTool` / `LoadExperienceDetailTool`，经 `AppContainer.sharedToolRegistry` 与本地题目工具、MCP 工具平等注册。
+- [x] 测试：`MemoryToolsTest`（L1 摘要、L2 query 过滤、L3 精确下钻、跨记忆集不串号、缺失 id 优雅报错）。
 
 ### Step 4 — 接入 AI 编排
-- [ ] 分析/追问流水线中，AI 按需调用记忆 tool 分级加载；`ContextAssembler` 只注入角色约束 + 已加载记忆片段。
-- [ ] 「我的」页：记忆集列表、文件查看/编辑/删除、简历导入触发结构化。
-- [ ] 测试：给定分布式题目，断言 AI 走 L1→L2(→L3) 的调用序列（用 fake agent/tool spy）；改简历后无任何题目侧写操作。
+- [x] 追问/自由对话：`FollowUpService.systemContext` 在工具轮可用时强制模型先 `list_memory_profiles → load_profile_overview →（按需）load_*_detail`，简历细节不再塞进 Prompt。
+- [x] 分析流水线：`RelevanceMatcher` / `AnswerGenerator` 经 `sharedToolRegistry` 挂载记忆工具；旧的 `read_resume`/`ResumeReaderTool` 已移除。
+- [x] 设置页「记忆管理」：`ui/profile/MemoryViewModel` + `MemorySettingsContent`，记忆集列表、概览/细节查看编辑、删除细节/记忆集、编辑 global。
+- [ ] 测试：给定题目断言 AI 走 L1→L2(→L3) 调用序列（fake agent/tool spy）；改简历后题目侧零写操作的解耦断言。**未写**。
+
+### 仍未落地
+- 上述两处 `- [ ]`：`resume.txt` 原文留档、Step 4 的调用序列 / 解耦 spy 测试（后者是本节「验收标准」中「解耦」一条的直接证据，缺失意味着该验收标准未被自动化覆盖）。
+- `MemorySettingsContent` 未接 `MemoryStore.clearAll()`（一键清空，见第 6 节隐私）；ViewModel 侧无调用点。
+- 对话侧记忆写入：聊天中出现的新事实无法沉淀进 `memory/`，当前唯一写入路径是简历导入。
+- `MemorySummary`（跨会话长期摘要，2.6）见 [`ai-framework.md`](./ai-framework.md)，属会话记忆而非简历记忆，仍未实现。
 
 ### 验收标准
 - **解耦**：简历/记忆的任何更新路径中，对题目表零写操作、无相关性批量重算（spy/fake 断言题目系统零调用）。

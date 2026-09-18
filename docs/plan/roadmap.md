@@ -2,7 +2,9 @@
 
 标记规范：`- [ ]` 未完成，`- [x]` 已完成，`- [~]` 部分完成（含偏差/缺项，见该行说明）。每阶段末尾有**验收标准**，全部满足才进入下一阶段。
 
-> 状态同步（2026-08-19）：本文件勾选已按**代码实际状态**校准。实现与初稿有若干偏差（如：手动 DI 取代 Hilt、Resume 用 DataStore 而非 Room、AI 代码在 `agent/` 包），已就地标注。**尚未实现**清单见文末「未实现汇总」。
+> 状态同步（2026-09-18）：本文件勾选已按**代码实际状态**（HEAD `641c650`）重新校准。实现与初稿有若干偏差（如：手动 DI 取代 Hilt、Resume 用 DataStore 而非 Room、AI 代码在 `agent/` 包、记忆层用分层文件而非 Room），已就地标注。**尚未实现**清单见文末「未实现汇总」。
+>
+> 8-19 以来新增落地（原文档曾标为未实现，现已完成）：端侧记忆子系统（`MemoryStore` 分层文件 + `ResumeIngestor` + 分级记忆工具族 + 设置页记忆管理）、MCP 客户端与服务器配置 UI、工具轮日志 `AgentLogger`、入队前校验 API Key、`DeepSeekClient` 重试/限流退避（`RetryInterceptor`）、答案 Markdown 分点渲染与流式输出、题库拼图拖拽排序。详见各节与文末汇总。
 
 ---
 
@@ -112,30 +114,40 @@
 
 ## P3.5 · 端侧记忆管理 + 会话（★测试先行）
 
-目标：端侧三层记忆 + 多职业档案 + 事实取代机制，支持"方向切换/多简历"，并持久化多轮会话。详见 [`memory.md`](./memory.md) 与 [`ai-framework.md`](./ai-framework.md)。真实 DeepSeek 调用仍在 P5。
+目标：端侧简历记忆 + 多方向记忆集共存，并持久化多轮会话。详见 [`memory.md`](./memory.md) 与 [`ai-framework.md`](./ai-framework.md)。真实 DeepSeek 调用仍在 P5。
 
-### P3.5.1 记忆存储与管理
-- [ ] Room：`CareerProfile`、`MemoryFact`、`MemoryEvent` 实体与 DAO；`Resume` 支持多份。
-- [ ] `MemoryManager`：`remember`（含 supersede 冲突处理）、`recall`（scope 过滤+排序+预算）、`decay/prune`、`switchProfile`。
-- [ ] `ResumeMemoryExtractor` / `ConversationMemoryExtractor`（经 `AiClient`）产出事实候选。
+> **架构换轨说明（2026-09）**：本节初稿设想「Room 三表（`CareerProfile`/`MemoryFact`/`MemoryEvent`）+ `MemoryManager`（remember/recall/supersede/decay/prune/switchProfile）+ 激活档案切换」。实际落地改为 [`memory.md`](./memory.md) 定义的**分层文件文档存储 + 多记忆集永久共存 + AI 按需编排**：
+> - 无「激活档案」概念 → `switchProfile` **取消**；选哪份记忆由 `ProfileMatcher`（写入时）与 AI（读取时）判断。
+> - 相关性不预存 → `recall` **取消**，改为 AI 现场调分级记忆 tool 拉取当前状态。
+> - 同方向简历改版直接覆盖文件 → `supersede` 冲突链 / `SUPERSEDED` 状态 / 历史可查 **取消**。
+> - 事实无生命周期字段 → `decay/prune` **取消**，改为用户在设置页手动删除。
+>
+> 因此下列原 P3.5.1 条目不再作为欠项，替换为新设计的落地项。
+
+### P3.5.1 记忆存储与管理（已换轨落地，详见 memory.md 第 7 节）
+- [x] `MemoryStore`（`data/memory/`）：`filesDir/memory/` 分层文件存储——`index.json` 记忆集索引、`global.md` 共享事实、`<profileId>/profile.md` 概览、`projects|experiences/<itemId>.md` 细节；id 经 `MemoryIds` 校验防路径穿越；`clearAll` 一键清空。
+- [x] 多方向记忆集**永久共存**（取代「多份 Resume + 激活档案」）：`ResumeIngestor` = `ResumeStructurer`（结构化）→ `ProfileMatcher`（语义判定并入已有方向 / 新建）→ 写 L2/L3/global → `upsertProfile`；入口 `work/AnalyzeResumeWorker`（后台）。
+- [x] 记忆能力暴露为分级 tool 族（`agent/tool/MemoryTools.kt`）：`list_memory_profiles` / `load_profile_overview(query?)` / `load_project_detail` / `load_experience_detail`，与题目工具、MCP 工具平等注册进 `AppContainer.sharedToolRegistry`。
+- [x] 单测：`MemoryStoreTest`、`ResumeStructurerTest`、`ProfileMatcherTest`、`ResumeIngestorTest`、`MemoryToolsTest`。
+- [ ] `resume.txt` 简历原文留档进 `memory/<profileId>/`（当前原文存 DataStore + `ResumeFileStore`）。
+- [ ] **对话侧记忆写入**（原 `ConversationMemoryExtractor` 的能力）：聊天中出现的新事实无法沉淀进 `memory/`，当前唯一写入路径是简历导入。
+- [ ] memory.md Step 4 的解耦断言测试：fake tool spy 断言 AI 走 L1→L2(→L3) 调用序列；改简历后题目侧零写操作。
 
 ### P3.5.2 会话与对话记忆（★随"追问"功能已大部分落地）
 - [x] Room：`ConversationEntity` / `ChatMessageEntity` 实体与 DAO。（**缺**：`MemorySummary`（跨会话长期摘要）未实现。）
 - [x] `TokenEstimator`（CJK/英文启发式）：`HeuristicTokenEstimator`。
 - [~] `ChatMemory`：已实现 `MessageWindowMemory` / `TokenWindowMemory`；**缺 `SummarizingMemory`（摘要记忆）**。
-- [~] `ContextAssembler`：已实现 system + 窗口历史 + 当前输入；**缺"激活档案事实(recall) + 长期摘要"**（依赖 P3.5.1 记忆层）。
+- [~] `ContextAssembler`：已实现 system + 窗口历史 + 当前输入；简历/档案事实**已改为工具轮按需拉取**（`FollowUpService.systemContext` 在工具可用时强制先走 `list_memory_profiles → load_profile_overview → load_*_detail`），不再预注入；**仍缺"跨会话长期摘要"注入**。
 - [x] `ConversationRepository`：会话 CRUD、追加消息、加载上下文（每题可多轮独立会话）。
 
 ### P3.5.3 单元测试（必须全绿）
-- [ ] 取代逻辑：同 key 新值 → 旧 `SUPERSEDED`、新 `ACTIVE`、`supersedesId` 链、历史可查。（依赖 P3.5.1，未做）
-- [ ] 方向切换：切/建 profile 后 `recall` 仅返回该 profile + GLOBAL 的 ACTIVE 事实，旧方向不泄漏。（未做）
-- [ ] 相关性随记忆变化：Java 后端 vs Android 激活档案下，`ContextAssembler`/`recall` 输出差异。（未做）
-- [ ] 抽取+冲突：从"改投安卓"文本抽取 → `remember` 正确取代 `target_role`（`FakeAiClient` 夹具）。（未做）
-- [ ] 衰减/修剪：超额/过期事实被降权或清理。（未做）
+- [~] ~~取代逻辑（`supersedesId` 链 / `SUPERSEDED` 状态）~~、~~方向切换隔离~~、~~衰减/修剪~~、~~抽取+冲突取代~~：**随架构换轨取消**，无对应能力（见上方换轨说明）。
+- [x] 记忆存储/结构化/分级加载单测：`MemoryStoreTest`、`ResumeStructurerTest`、`ProfileMatcherTest`、`ResumeIngestorTest`、`MemoryToolsTest`（多记忆集并存互不干扰、query 过滤、L3 精确下钻、缺失 id 优雅报错）。
 - [x] 会话窗口/上下文顺序正确；会话 CRUD 持久化正确：`ChatMemoryTest`/`ContextAssemblerTest`/`HeuristicTokenEstimatorTest`/`ConversationRepositoryTest`（**摘要相关未覆盖**）。
+- [ ] 解耦断言（memory.md 验收标准）：tool spy 断言 L1→L2→L3 调用序列 + 改简历后题目侧零写操作。
 
 **验收标准**
-- 会话层单测全绿 ✅；记忆事实/档案层（P3.5.1）尚未开始，验收未达成。
+- 会话层单测全绿 ✅；记忆层（P3.5.1 新设计）存储/结构化/工具族单测全绿 ✅；**解耦验收缺自动化证据**、**跨会话摘要（P3.5.2）未实现**，整节验收未完全达成。
 
 ---
 
@@ -155,7 +167,7 @@
 - [x] **WorkManager 后台任务**：`AnalyzePostWorker`（单 worker 内完成读取+分析，非文档最初设想的 `ReadWork→AnalyzeWork` 两阶段链，但功能等价）+ 网络约束 + 指数退避重试；进程/重启后可恢复。
 - [x] **前台服务 + 进度通知**（`setForeground` + `ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC`）；完成后本地通知直达题目列表。
 - [x] 导入任务**状态机**（`ImportStatus`）与导入列表状态展示、`NEEDS_MANUAL_INPUT` 转手动粘贴。
-- [ ] 入队前校验 DeepSeek Key，无 Key 引导去设置（目前仅校验"是否已配置简历"，未校验 Key；待办）。
+- [x] 入队前校验 API Key：`HomeViewModel.canAnalyze()` 读 `settingsRepository.activeConfig.isConfigured`，未配置则拦截入队并提示"请先在设置中配置 API Key"（`onRetry` 同校验）；简历缺失只提示不拦截。（**偏差**：文案引导而非自动跳转设置页。）
 
 ### P4.3 简历与结果
 - [x] 简历页：SAF 选 PDF 导入，端侧解析为 `ResumeProfile`（`PdfBoxResumeTextExtractor`）+ PDF 渲染预览 + 识别文本可编辑（见"简历页改版"）。
@@ -163,8 +175,8 @@
 - [x] 刷题页：`QuizScreen`/`QuizCategoryScreen`，答案默认折叠、`practiced` 标记进度（已超出"占位"）。
 
 ### P4.4 我的 & 设置
-- [~] 我的页（已并入"设置"页 `ProfileScreen`）：**简历/AI 设置已做**；**职业档案切换、记忆管理未做**（依赖 P3.5.1）。
-- [~] 设置：填写 DeepSeek/多 provider Key ✅、相关性阈值滑杆 ✅；**缺：Key 有效性校验、隐私说明/一键删除数据、离线开关**。
+- [~] 我的页（已并入"设置"页 `ProfileScreen`）：**简历 ✅、AI 设置 ✅、记忆管理 ✅**（`MemoryViewModel` + `MemorySettingsContent`：记忆集列表、概览/细节查看编辑、删除细节/记忆集、编辑 global）、**MCP 工具服务器 ✅**（增删/启停/重连刷新）；~~职业档案切换~~ 随架构换轨取消（无激活态）。
+- [~] 设置：填写 DeepSeek/多 provider Key ✅、相关性阈值滑杆 ✅、MCP 服务器配置 ✅；**缺：Key 有效性校验、隐私说明/一键删除数据（`MemoryStore.clearAll()` 已实现但 UI 无调用点）、离线开关**。
 - [~] ViewModel 单测：`HomeViewModelTest` ✅；**`SettingsViewModel`/`ResumeViewModel` 未测**。
 
 **验收标准**
@@ -177,7 +189,8 @@
 
 目标：接入真实网络与真实 DeepSeek，端到端跑通两个基准链接。
 
-- [x] 实现 `DeepSeekClient`（OkHttp，OpenAI 兼容 `chat/completions` + 工具轮 `ToolCallingLlm`），BYOK Key 直连、可切 baseUrl/model；已设连接/读/写/整体超时。（**缺**：显式重试/限流退避——目前依赖 `WorkManager` 任务级指数退避。）
+- [x] 实现 `DeepSeekClient`（OkHttp，OpenAI 兼容 `chat/completions` + 工具轮 `ToolCallingLlm` + 流式 `StreamingLlm`），BYOK Key 直连、可切 baseUrl/model；已设连接/读/写/整体超时。
+- [x] 显式重试/限流退避（见 [`network-resilience.md`](./network-resilience.md)）：`data/net/RetryInterceptor`（`IOException`/408/429/5xx 指数退避 + 抖动，优先读 `Retry-After`）、`HttpClients`（统一连接池/pingInterval/按用途分档）、`NetEventListener`（DNS/连接/TLS 阶段日志）、`Http2Health`、`NetErrors.isTransient`；`DeepSeekClient` 把异常归类为 `AiException(retryable)`；`work/AnalyzeGate` 用 `Semaphore(1)` 串行化分析，避免共享 HTTP/2 连接被一并击穿。
 - [x] 集成/探针测试（真实网络）：`LiveLinkReadingTest`（真实链接读取）、`ImageOcrProbeTest`（多模态 OCR 探针，需 `-Docr.key`）；默认可跳过、手动开启。
 - [ ] 端到端：分享牛客链接 → WebView/静态读取正文 → 分析 → 刷题，真机跑通。（**未做真机验证**，本机仅编译+单测）
 - [x] 小红书：按 P2.1 结论落地——WebView 离屏渲染 + `XhsNoteExtractor` 解析 `__INITIAL_STATE__`。
@@ -330,7 +343,7 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 - [x] `ToolCallingAgent` 循环：`ToolCallingAgentTest`（工具轮/未知工具/步数上限）。
 - [x] `ResumeReaderTool`：`ResumeReaderToolTest`（query 过滤纯逻辑）。
 - [x] Prompt/协议：`DeepSeekToolCallingTest`（`tools` 请求 + `tool_calls`/final 解析 + tool 结果序列化）。
-- [ ] MCP 适配：用 fake MCP server（内存实现）验证 `listTools`/`callTool` → `Tool` 映射。（未做，无 `McpClient`）
+- [x] MCP 适配：`McpToolRepositoryTest`（fake `McpClient` 验证 `listTools`/`callTool` → `Tool` 映射、单台失败不影响其余）、`HttpMcpClientTest`（MockWebServer）、`McpParsingTest`。
 
 ### 已完成 ✅（自研薄框架核心）
 - 端口与循环：`ToolCallingLlm`（工具轮端口）+ `LlmTurn`(Final/ToolInvocations) + `Tool`/`ToolRegistry` + `ToolCallingAgent`（发送→执行工具→回填→再发送，带 maxSteps 兜底）。
@@ -350,11 +363,18 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 - `AppContainer` 抽出共享 `resumeToolRegistry` + `toolCallingLlm`，供追问/相关性/作答复用。
 - 单测：`RelevanceMatcherTest` / `AnswerGeneratorTest` 各新增"启用工具轮时调用 read_resume 并回填"。
 
+### 已完成 ✅（工具清单、日志、MCP）
+- 当前共享工具注册表（`AppContainer.sharedToolRegistry`，provider 按需求值，MCP 刷新/记忆文件更新后自动生效）：
+  - 题目系统本地工具：`QuestionSearchTool`(`search_questions`)、`CategoryListTool`(`list_categories`)。
+  - 记忆系统分级工具：`list_memory_profiles` / `load_profile_overview` / `load_project_detail` / `load_experience_detail`（取代原设想的 `recall_memory`）。
+  - 外部工具：`McpToolRepository.current()` 映射出的 MCP 工具。
+  - 注：旧的 `read_resume` / `ResumeReaderTool` 已移除（提交 `a0b8e80`），简历背景统一走记忆工具，其单测 `ResumeReaderToolTest` 亦已删除。
+- 工具轮日志：`agent/AgentLogger.kt`（TAG=`OfferMateAI`，`brief()` 截断长文），注入 `DeepSeekClient`（打印模型请求的工具名+参数）、`ToolCallingAgent`、`FollowUpService`、`RelevanceMatcher`（打印被阈值丢弃的题）。
+- MCP：`agent/mcp/` 下 `McpClient` 端口 + `HttpMcpClient`（JSON-RPC over Streamable HTTP）+ `McpTool`（映射为统一 `Tool`）+ `McpToolRepository`（多台发现，单台失败只跳过该台）+ `McpServerConfig`；配置持久化于 `DataStorePreferencesStore.mcpServers`，UI 在设置页「MCP 工具服务器」（增删/启停/重连刷新）。
+- 流式与健壮性兜底：`InlineToolCallParser`（内联文本式工具调用兜底）、`ToolArgumentValidator`、`ToolCallAccumulator`（流式工具调用分片聚合）。
+
 ### 待办清单
-- [ ] 更多工具（`recall_memory` 接 P3.5 记忆、`list_categories` 等）与 Skills 打包。
-- [ ] 工具轮日志（TAG=OfferMate）便于真机观察模型是否调用工具、query 与结果。
-- [ ] `McpClient` + 配置项（用户可增删 MCP server）+ tool 映射。
-- [ ] Skills 打包机制（模板 + 工具集）与在流水线中的挂载。
+- [ ] Skills 打包机制（提示词模板 + 工具集）与在流水线中的挂载。（全仓无相关实现）
 - [~] `DeepSeekClient` 工具轮的真实请求/解析已实现并单测（`DeepSeekToolCallingTest`）；**真机/真实 Key 端到端验证仍待做**。
 
 ---
@@ -367,15 +387,15 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
    - `QuestionRepository` 扩展 `observeById`/`updateAnswer`。
    - UI：`FollowUpScreen`/`FollowUpViewModel`（聊天气泡 + 输入 + “用本轮讨论更新答案”），题目卡片“追问”入口，导航 `followup/{questionId}`。
    - 单测：TokenEstimator/ChatMemory/ContextAssembler/FollowUpService/ConversationRepository 全绿。
-2. **答案分点 + Markdown**：`AnswerGenerator` 产出**分点**答案；题目卡片答案用 **Markdown 渲染**（候选：compose-richtext / Markwon / 自研轻量渲染）。
+2. ~~**答案分点 + Markdown**~~ ✅ 已完成：自研轻量渲染 `ui/components/MarkdownText.kt`（+ `StreamingMarkdown`/`PartialMarkdown`/`MarkdownStateCache`，AI 消息按 Markdown 块拆成独立 item 以消除长列表卡顿）；`AnsweredQuestionCard` 用 `MarkdownText(q.answer)` 渲染；Prompt 侧明确要求"Markdown、分点、加粗、反引号"。
 3. **需调研后落地**（统一调研，关联 memory.md）：
-   - AI 记忆机制（三层记忆、语义事实、方向切换）——仍未开始，见 P3.5.1。
-   - 题目相似**去重**（SimHash/LSH 分桶，增量不扫全表）。
-   - **简历更新 → 相关度连锁重算**：简历/职业档案变更后，对已有题目重新评估相关性并更新，避免全量重跑的高成本。
+   - ~~AI 记忆机制~~ ✅ 已换轨落地（分层文件记忆集 + 分级工具，见 P3.5.1）；剩余缺口：对话侧记忆写入、跨会话摘要。
+   - ~~题目相似**去重**~~ ✅ 首版已完成（SimHash + 标签分桶，增量不扫全表）；剩余：LSH 分带、embedding 语义去重、命中合并策略。
+   - ~~**简历更新 → 相关度连锁重算**~~ ❌ **按 memory.md 第 1 节原则取消**：相关性不预存、不批量重算，改为 AI 处理某题时现场调记忆工具读取当前状态判断。
    - ~~**会话管理**（多会话持久化）~~ ✅ 已完成（基础版）：原"一题一会话"（`questionId` 唯一索引）改为一题可开**多轮独立会话**；`ConversationRepository` 新增 `createNewForQuestion`/`observeConversationsForQuestion`；`FollowUpScreen` 加会话切换条（"第 N 轮" + "新开一轮"），默认续上最近更新的会话。DB 版本 8→9。上下文窗口裁剪/摘要记忆仍是现状（`TokenWindowMemory`），未做跨会话摘要。
 4. **题库拼图增强**：
-   - 更丰富的配色（扩充调色板 / 按分类稳定取色 / 渐变）。
-   - 支持**拖拽排序**（自定义顺序持久化到本地）。
+   - [x] 按分类稳定取色（`QuizScreen.CategoryPalette` 按分类 hashCode 取色）；渐变/更丰富配色仍可增强。
+   - [x] **拖拽排序** ✅ 已完成：`ui/components/PuzzleGrid.kt`（长按拖拽 + 目标格计算 + 位移动画），顺序持久化 `data/repository/CategoryOrderStore` + `CategoryRepository.observeOrder/saveOrder`。
 6. ~~**简历预览区缩放/拖拽越界**~~ ✅ 已完成：`ZoomableImage` 缩放范围维持 1x~5x；新增按缩放倍数计算的可拖拽边界（不能无限拖走内容），拖到边界后剩余手势通过 `NestedScrollDispatcher` 转发给外层 `verticalScroll`，未放大时单指拖动整段转发给外层，解决"拖到底部无法带动外层滚动"的问题。
 5. ~~**用户自定义分类与题目**~~ ✅ 已完成
    - 分类：`CategoryEntity`/`CategoryDao`/`RoomCategoryRepository`，支持手动新增/删除分类（可先建空分类）；题库总览 `QuizViewModel` 合并"标签派生分类 + 用户分类"，空分类显示 0/0。
@@ -393,51 +413,53 @@ P0 ─▶ P1(测试先行) ─▶ P2(测试先行) ─▶ P3 ─▶ P3.5(测试�
 
 ---
 
-## 未实现汇总（截至 2026-08-19，按优先级/依赖）
+## 未实现汇总（截至 2026-09-18，按优先级/依赖）
 
-> 说明：以下是核对代码后**确认尚未实现**的项。已完成的大头（P1 分析流水线、P2 读取+WebView+OCR、P3 存储+BYOK、P4 主要 UI、P5 真实 DeepSeek 客户端、去重、分类、追问会话、工具轮自研框架）不再列出。
+> 说明：以下是核对 HEAD `641c650` 代码后**确认尚未实现**的项。已完成的大头不再列出：P1 分析流水线、P2 读取+WebView+OCR、P3 存储+BYOK、P3.5 记忆子系统（换轨版）+ 会话、P4 主要 UI、P5 真实 DeepSeek 客户端 + 网络韧性、去重、LLM 分类、追问/自由对话、工具轮自研框架、MCP、Markdown 流式渲染、拼图拖拽。
+>
+> 上一版汇总（2026-08-19）中的 A（记忆层）、D（入队校验 Key）、F 的大部分（`list_categories`、工具轮日志、`McpClient` 及其单测）、H 的重试退避均已完成；记忆层的 `MemoryManager`/`supersede`/`decay`/`switchProfile` 与「简历更新 → 相关度连锁重算」按新设计**主动取消**，不再计为欠项。
 
-### A. 端侧记忆管理（P3.5.1，最大缺口，多处依赖）
-- `CareerProfile` / `MemoryFact` / `MemoryEvent` 的 Room 实体与 DAO；`Resume` 多份支持。
-- `MemoryManager`：`remember`（含 supersede 冲突链）、`recall`（scope 过滤+排序+预算）、`decay/prune`、`switchProfile`。
-- `ResumeMemoryExtractor` / `ConversationMemoryExtractor`（经 `AiClient` 产出事实候选）。
-- 对应单测：取代逻辑、方向切换隔离、相关性随记忆变化、抽取+冲突、衰减/修剪（P3.5.3 全部）。
-- 关联下游：**从简历 AI 抽取岗位/技能画像**、**简历更新 → 相关度连锁重算**、`ContextAssembler` 接入 `recall`、`recall_memory` 工具——均卡在此。
+### A. 跨会话长期记忆（当前最大的架构缺口）
+- `MemorySummary` 实体 + `SummarizingMemory`（摘要记忆）：`ChatMemory` 目前只有 `MessageWindowMemory`/`TokenWindowMemory`，会话一超 token 预算，早期讨论直接丢失。
+- `ContextAssembler` 注入"长期摘要"：现仅拼 `system + 窗口历史 + 当前输入`。（注："档案事实注入"已换为工具轮按需拉取，不算欠项。）
+- **对话侧记忆写入**：聊天中出现的新事实（如"我改投安卓了"）无法沉淀进 `memory/`；当前唯一写入路径是简历导入。
 
-### B. 会话记忆增强（P3.5.2 缺项）
-- `MemorySummary` 实体 + `SummarizingMemory`（跨会话长期摘要）；`ContextAssembler` 注入"档案事实 + 长期摘要"。
+### B. 隐私与数据管理（P4.4）
+- **一键删除全部数据**：`MemoryStore.clearAll()` 已实现但 **ViewModel/UI 无任何调用点**；会话/记忆**导出**亦未做。
+- 各 provider **Key 有效性校验**：`SettingsViewModel.onEnable` 直接保存，无试调用验证。
+- 独立**隐私说明**段落（现仅设置页底部一句免责）、**离线开关**。
 
-### C. 设置 / 我的页缺项（P4.4）
-- DeepSeek/各 provider **Key 有效性校验**（当前仅保存启用）。
-- **隐私说明 + 一键删除全部数据**。
-- **离线开关**（占位）。
-- **职业档案切换、记忆管理** 入口（依赖 A）。
-- `SettingsViewModel` / `ResumeViewModel` 的 ViewModel 单测。
+### C. 成本与缓存
+- OCR 结果**缓存进 `ImportedPost`**：`ImportedPostEntity` 无 `ocrText` 列，重试同一帖子会重新下载 + 重新识别。
+- OCR 结果**去重 / 空白·水印行清理**：`ImportInteractor.enrichWithImageOcr` 只做顺序拼接与整段 `trim()`。
+- **同链接不重复分析**的缓存/节流与 token 消耗提示（ui-and-runtime.md 2.4）：现仅有题目级 simhash 去重，无按 URL 的分析缓存。
 
-### D. 导入健壮性（P4.2）
-- **入队前校验 DeepSeek Key**，无 Key 引导去设置（当前仅校验是否已配置简历）。
+### D. 题目侧展示与编辑
+- 题目卡片展示**来源链接跳转**与**相关性分数/理由**：`QuestionEntity.relevanceScore`/`relevanceReason` 已入库，但 UI 层完全未使用。
+- 分类**重命名**（现仅增/删）、手动题**编辑**（现仅增/删）。
+- 去重命中时"保留相关性更高者 / 记录来源计数"合并（现为跳过入库）、LSH 分带、端侧 embedding 语义去重。
 
-### E. OCR 收尾
-- OCR 结果**去重 / 空白·水印行清理**。
-- OCR 结果**缓存进 `ImportedPost`**，避免重复识别。
+### E. 工具 / Skills
+- **Skills 打包机制**（提示词模板 + 工具集）与流水线挂载。全仓零实现，是工具体系里唯一未动的部分。
 
-### F. 工具 / MCP / Skills（架构级，后续）
-- 更多工具：`recall_memory`（接 A）、`list_categories` 等。
-- 工具轮**日志**（真机观察模型是否调用工具及 query/结果）。
-- `McpClient` + 用户可配置 MCP server + tool 映射；对应 fake MCP server 单测。
-- **Skills 打包机制**（提示词模板 + 工具集）与流水线挂载。
+### F. 小红书后备与读取增强
+- `XhsWebViewReader : DynamicContentReader` + `CookieManager` 登录态、可见 WebView 登录页、登录态失效处理（xhs-reading.md 第 3/6 节）。现状为通用 `WebViewContentReader` + 静态 `XhsNoteExtractor`。
+- 路线 B（WebView 取签名 + OkHttp 直调接口）。
+- ui-and-runtime.md 列的二级页「读取预览」无对应 Screen。（「职业档案页」已随架构换轨取消。）
 
-### G. 小红书后备与验证
-- `XhsWebViewReader : DynamicContentReader` + 登录态（仅当遇到需登录/静态拿不到的笔记再做）。
-- P2.4 / OCR / PDF 预览 / 工具轮的 **instrumented 或真机验证**（不纳入 JVM 单测门槛）。
+### G. 测试与验收覆盖
+- **ViewModel 单测**只有 `HomeViewModelTest`；`SettingsViewModel`/`ResumeViewModel`/`QuizViewModel`/`AiChatViewModel` 全无（未满足 testing-strategy.md 的 P4 门槛"各 ViewModel UiState 流转测试"）。
+- memory.md Step 4 的**解耦断言测试**：tool spy 断言 AI 走 L1→L2→L3 调用序列、改简历后题目侧零写操作。这是 memory.md「解耦」验收标准的直接证据，缺失即该标准未被自动化覆盖。
+- **instrumented 层几乎为空**（仅 `ImageOcrInstrumentedTest`）：WebView 动态取文、PDF 预览、工具轮、真实 Room、UI 均无覆盖。
+- **端到端真机跑通**（分享链接 → 读取 → 分析 → 刷题）无完成证据；`DeepSeekClient` 工具轮的真实 Key 端到端验证亦未做。
 
-### H. P5 打磨
-- **端到端真机跑通**（分享链接 → 读取 → 分析 → 刷题）。
-- `DeepSeekClient` 显式**重试/限流退避**（当前靠 WorkManager 任务级退避）。
-- **来源链接跳转 / 相关性理由**在题目卡片上的完整展示。
-- 免责/隐私/一键删除（与 C 重叠）、性能体验打磨、可选端侧本地模型离线开关。
+### H. 其它（低优先 / 可选）
+- `resume.txt` 简历原文留档进 `memory/<profileId>/`（memory.md 2.5；现存 DataStore + `ResumeFileStore`）。
+- 拼图配色进一步丰富（渐变等）。
+- 可选 P6：端侧本地模型离线推理。
+- 持续性能与体验打磨。
 
-### 其它增强（低优先）
-- 分类**重命名**、手动题**编辑**（当前支持增/删）。
-- 去重命中时"保留相关性更高者/记录来源计数"合并（当前为跳过入库）、LSH 分带、端侧 embedding 语义去重。
-- 题库拼图：更丰富配色、**拖拽排序**（自定义顺序持久化）。
+### 建议优先级
+1. **A 的 `SummarizingMemory` + 长期摘要注入** —— 唯一的架构级缺口，长对话体验直接受损。
+2. **B 的一键删除 + Key 校验** —— `clearAll()` 已写好只差接线，成本极低、收益（隐私合规 + 配置容错）明确。
+3. **C 的 OCR 缓存** —— 直接省 token 与流量，改动集中在 `ImportedPostEntity` + `ImportInteractor`。

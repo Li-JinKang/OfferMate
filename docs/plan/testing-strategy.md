@@ -63,3 +63,7 @@ app/src/test/resources/fixtures/
 - P2 门槛：`HtmlContentExtractorTest`、`UrlResolverTest`、`ContentReaderTest`。
 - P3 门槛：DAO 读写测试、`SecureKeyStore` 存取测试。
 - P4 门槛：ViewModel `UiState` 流转测试。
+  - 状态同步（2026-09-18）：**仅 `HomeViewModelTest` 存在**，`SettingsViewModel`/`ResumeViewModel`/`QuizViewModel`/`AiChatViewModel`/`MemoryViewModel` 均无单测 → **P4 门槛未满足**。
+- P3.5 门槛（记忆/会话）：`MemoryStoreTest`、`ResumeStructurerTest`、`ProfileMatcherTest`、`ResumeIngestorTest`、`MemoryToolsTest`、`ChatMemoryTest`、`ContextAssemblerTest`、`HeuristicTokenEstimatorTest`、`ConversationRepositoryTest` ✅；**缺** memory.md Step 4 的 tool spy 调用序列 / 解耦断言测试。
+- 工具轮门槛：`ToolCallingAgentTest`、`DeepSeekToolCallingTest`、`LocalToolsTest`、`HttpMcpClientTest`、`McpParsingTest`、`McpToolRepositoryTest` ✅。
+- Instrumented 层现状：仅 `ImageOcrInstrumentedTest`（+ 模板）。WebView 动态取文、真实 Room、PDF 预览、UI、端到端分享流程**均无覆盖**（不纳入门槛，但 P5 真机验收依赖它）。

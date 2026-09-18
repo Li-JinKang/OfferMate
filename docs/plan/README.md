@@ -11,7 +11,7 @@
 | AI 密钥 | BYOK（用户自填），加密存储于本地 |
 | 首选大模型 | **DeepSeek**（`AiClient` 首个适配目标，OpenAI 兼容接口） |
 | AI 框架 | **自研轻量会话/记忆层 + `AiClient` 抽象**（不引入重型 Agent 框架），详见 [`ai-framework.md`](./ai-framework.md) |
-| 端侧记忆 | 三层记忆（工作/情景/语义）+ 多职业档案 + 事实取代机制，支持方向切换与多简历，详见 [`memory.md`](./memory.md) |
+| 端侧记忆 | **分层文件记忆集 + 多方向永久共存 + 记忆能力暴露为分级 tool（AI 按需编排）**，无激活档案/无事实取代链，详见 [`memory.md`](./memory.md)（原"三层记忆 + 事实取代"设计已于 2026-09 换轨） |
 | 核心能力 | 分析用户分享**链接**中的面经 → 抽题 → 简历相关性筛选 → 生成答案 |
 | 内容来源 | 用户分享/粘贴的**单篇链接**（非批量爬虫） |
 | 开发方式 | **测试先行**：核心能力先在 `src/test` 下通过测试，再接入真实链接/UI |
@@ -51,9 +51,12 @@
 - [`roadmap.md`](./roadmap.md) — 分步任务清单（评判用）
 - [`testing-strategy.md`](./testing-strategy.md) — 测试策略与夹具规范
 - [`ai-framework.md`](./ai-framework.md) — AI 框架决策与端侧会话记忆设计
-- [`memory.md`](./memory.md) — 记忆管理子系统（多档案、语义事实、方向切换）
-- [`xhs-reading.md`](./xhs-reading.md) — 小红书链接读取方案（WebView 登录态，参考 MediaCrawler）
+- [`memory.md`](./memory.md) — 端侧简历记忆子系统（多方向记忆集共存、分层文件存储、分级按需加载 tool）
+- [`xhs-reading.md`](./xhs-reading.md) — 小红书链接读取方案（静态 `__INITIAL_STATE__` 优先，WebView 登录态为后备）
 - [`ui-and-runtime.md`](./ui-and-runtime.md) — UI 导航结构（精简 3 Tab）与后台运行/任务调度设计
+- [`network-resilience.md`](./network-resilience.md) — 网络韧性：重试/限流退避、连接池分档、分析串行化
+
+> 当前实际进度与剩余缺口，以 `roadmap.md` 文末「未实现汇总」为准（最近校准：2026-09-18）。
 
 ## 进度约定
 
