@@ -12,6 +12,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.flow.first
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 /**
  * 双指针追赶打字机：把「已接收长度」和「已显示长度」分离，让显示长度以**帧**为节拍追赶接收长度。
@@ -24,11 +25,11 @@ import kotlin.math.ceil
  *
  * ## 两个刻意的设计
  *
- * **1）出字按帧计数，不按墙钟毫秒。** 早先是「攒够 32ms 出一次」，问题是 32ms 不是帧间隔的整数倍：
- * 60Hz 下是 1.92 帧、120Hz 下是 3.84 帧，于是实际节拍在「1 帧/2 帧」或「3 帧/4 帧」之间来回跳，
- * 观感上是轻微的不匀。改成固定每 [EMIT_EVERY_N_FRAMES] 帧出一次后节拍严格均匀，
- * 而且自动适配刷新率——60Hz 上约 33ms 一次（和原来相当），120Hz 上约 17ms 一次（更细腻）。
- * 出字**速度**仍按实测帧间隔换算，所以 `charsPerSecond` 在不同刷新率下表现一致。
+ * **1）出字节拍对齐到整数帧，但频率由时间目标决定。** 直接用「攒够 32ms 出一次」的墙钟判断时，
+ * 32ms 不是帧间隔的整数倍（60Hz 是 1.92 帧、120Hz 是 3.84 帧），实际节拍会在相邻帧数之间来回跳，
+ * 观感上轻微不匀。这里改为把 [TARGET_EMIT_INTERVAL_MS] 按实测帧间隔换算成**整数帧数**再对齐，
+ * 两头的好处都要：节拍均匀，频率又不随刷新率漂移（60Hz 每 2 帧、120Hz 每 4 帧，都是约 30 次/秒）。
+ * 出字**速度**同样按实测帧间隔换算，所以 `charsPerSecond` 在不同刷新率下表现一致。
  *
  * **2）返回 [State] 而不是 [String]。** 调用方常常是页面级 composable，如果直接返回 String，
  * 每个出字节拍都会让整个页面重组（重建行列表、重跑 LazyColumn 的 content lambda）。
@@ -64,6 +65,10 @@ fun rememberTypewriterText(
         var framesSinceEmit = 0
         var lastFrameNanos = 0L
         var frameIntervalNanos = DEFAULT_FRAME_NANOS
+        // 刚进入流式、以及每次等到新增量之后，第一帧立刻出字，不必先攒满一个间隔——
+        // 否则 token 之间每次停顿都会额外压上一个间隔的延迟（120Hz 上是 4 帧约 33ms），
+        // 观感变成"一顿一顿"。攒帧只用来限制**持续输出**时的频率。
+        var emitOnNextFrame = true
         while (true) {
             // 落后时按帧追赶，但只在攒够帧数的那一帧真正写 state。
             while (displayLen.intValue < target().length) {
@@ -76,8 +81,13 @@ fun rememberTypewriterText(
                 }
                 lastFrameNanos = now
                 framesSinceEmit++
+                // 按实测帧间隔换算出「几帧出一次字」，让**出字频率与刷新率无关**。
+                // 60Hz → 2 帧，120Hz → 4 帧，都落在约 TARGET_EMIT_INTERVAL_MS。
+                val framesPerEmit = (TARGET_EMIT_INTERVAL_MS / (frameIntervalNanos / 1_000_000f))
+                    .roundToInt().coerceAtLeast(1)
                 // 帧数没攒够：这一帧什么都不改，不触发重组，几乎零成本。
-                if (framesSinceEmit < EMIT_EVERY_N_FRAMES) continue
+                if (!emitOnNextFrame && framesSinceEmit < framesPerEmit) continue
+                emitOnNextFrame = false
 
                 val elapsedMs = framesSinceEmit * frameIntervalNanos / 1_000_000f
                 framesSinceEmit = 0
@@ -96,6 +106,7 @@ fun rememberTypewriterText(
             // 归零同时让恢复后的第一帧立刻出字，不必再等一个间隔。
             lastFrameNanos = 0L
             framesSinceEmit = 0
+            emitOnNextFrame = true
             snapshotFlow { target().length }.first { it > displayLen.intValue }
         }
     }
@@ -112,10 +123,21 @@ fun rememberTypewriterText(
 }
 
 /**
- * 出字的帧间隔。2 帧 ≈ 60Hz 上 33ms、120Hz 上 17ms：观感连续，又把下游重解析/重排的次数
- * 压到刷新率的一半。
+ * 目标出字间隔（毫秒），约 30 次/秒：观感上已经完全连续。
+ *
+ * **它是时间而不是帧数，这一点很重要。** 每次出字都会触发一轮
+ * 重组 → 布局 → 重新录制绘制指令 → RenderThread 绘制，成本最终压在绘制和 GPU 吞吐上，
+ * 而那个成本是按**每秒多少次**计的，跟屏幕刷新率没关系。
+ *
+ * 曾经写成「固定每 2 帧出一次」，在 60Hz 上是 33ms（对的），到 120Hz 上就变成 17ms——
+ * 出字频率悄悄翻倍，绘制/GPU 负载也翻倍。在 Honor 90 Pro（120Hz）的 system trace 上表现为
+ * `HardwareRenderer#syncAndDrawFrame > postAndWait` 吃掉约 3.9ms/帧，
+ * 即主线程有近一半的帧预算在等 RenderThread。
+ *
+ * 所以这里定的是**时间目标**，再按实测帧间隔换算成整数帧数去对齐——
+ * 既保持节拍均匀（整数帧，不会在 3/4 帧之间跳），又让频率不随刷新率漂移。
  */
-private const val EMIT_EVERY_N_FRAMES = 2
+private const val TARGET_EMIT_INTERVAL_MS = 32f
 
 /** 表示"不截断，直接显示全文"。 */
 private const val NO_LIMIT = Int.MAX_VALUE
