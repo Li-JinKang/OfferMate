@@ -13,9 +13,11 @@ import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
 import com.jk.offermate.ui.components.MarkdownStateCache
 import com.jk.offermate.ui.components.StreamingMarkdown
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,10 +25,22 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+/**
+ * 会话页一次渲染所需的列表内容。
+ *
+ * @property messages 已落库消息，**不含**正在流式生成的那条（它走 [ChatViewModel.streamingText]）
+ * @property showStreamingTail 是否要在列表末尾显示流式气泡
+ */
+data class ChatContent(
+    val messages: List<ChatMessage> = emptyList(),
+    val showStreamingTail: Boolean = false
+)
 
 /**
  * 以「会话」为中心的对话 VM：会话是可选的——
@@ -53,16 +67,31 @@ class ChatViewModel(
     private val persistedMessages: StateFlow<List<ChatMessage>> =
         conversationId
             .flatMapLatest { id ->
+                // 换会话就重置预热进度，否则两个等长会话之间会误判「已经热过了」。
+                prewarmedCount = 0
                 if (id == null) flowOf(emptyList()) else conversationRepository.observeMessages(id)
             }
             // 在消息交给 UI **之前**，先在后台把 AI 回复的 Markdown 解析好写入 MarkdownStateCache。
             // 这样 MarkdownText 首次组合即命中缓存，跳过 State.Loading（空白）那一帧，
             // 不会出现“进入会话页先看到用户消息、AI 回答慢一拍才出现”。
             .map { list -> list.also { prewarmMarkdown(it) } }
+            // 预热里的 blocksMemo / peek 循环是纯 CPU 活，不能放在 Main 上跑：
+            // stateIn(viewModelScope) 会让上游默认落到 Main.immediate，长会话下这一圈
+            // 「消息数 × 块数」次哈希查找就是一次主线程尖峰。
+            .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** 正在流式生成中的 AI 文本（null 表示当前无流式）。 */
     private val _streaming = MutableStateFlow<String?>(null)
+
+    /**
+     * 流式文本的**独立通道**，只给真正显示文字的那个叶子 composable 读。
+     *
+     * 为什么不再塞进 [content] 的消息列表里：那样每个 SSE chunk（provider 侧 20~50 次/秒）
+     * 都会重建整个消息列表、触发页面级重组（重建上百个行对象 + 重跑 LazyColumn 的 content lambda），
+     * 而下游真正需要这个高频数据的只有打字机的「目标长度」。
+     */
+    val streamingText: StateFlow<String?> = _streaming.asStateFlow()
 
     /**
      * 是否正处于**流式生成**中。UI 用它判断最后一条气泡要不要走打字机。
@@ -74,17 +103,23 @@ class ChatViewModel(
     val streamingActive: StateFlow<Boolean> = _streamingActive.asStateFlow()
 
     /**
-     * 供 UI 渲染的消息：在已落库消息之上，追加“正在流式生成”的临时 AI 气泡。
-     * 若最新一条已落库消息内容与流式文本相同（生成完成、已入库），则去重、不重复展示。
+     * 供 UI 渲染的会话内容：已落库消息 + 是否要显示流式气泡。
+     *
+     * 两者必须放在**同一个对象里原子更新**。拆成两个 StateFlow 的话，流式结束那一瞬间
+     * Compose 可能只看到其中一个：先看到「不显示流式气泡」就会让回答闪一下消失，
+     * 先看到「消息已落库」又会短暂出现两份。
+     *
+     * 另一个关键点是 [ChatContent] 是 data class：[_streaming] 每收到一个 chunk 都会让
+     * combine 重算一次，但只要落库消息和显示标记都没变，算出来的对象就与上一个相等，
+     * StateFlow 基于相等性的去重会把它丢掉——**不会有额外发射，也就不会有重组**。
      */
-    val messages: StateFlow<List<ChatMessage>> =
+    val content: StateFlow<ChatContent> =
         combine(persistedMessages, _streaming) { db, streaming ->
-            when {
-                streaming == null -> db
-                db.lastOrNull()?.let { it.role == Role.ASSISTANT && it.content == streaming } == true -> db
-                else -> db + ChatMessage(role = Role.ASSISTANT, content = streaming)
-            }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+            // 流式文本已经落库（与最后一条内容一致）就不必再单独显示，避免重复。
+            val alreadyPersisted =
+                db.lastOrNull()?.let { it.role == Role.ASSISTANT && it.content == streaming } == true
+            ChatContent(messages = db, showStreamingTail = streaming != null && !alreadyPersisted)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatContent())
 
     /** 当前会话标题：取自会话记录（首轮对话后由摘要生成）；无标题/无会话时为 null。 */
     val title: StateFlow<String?> =
@@ -227,12 +262,24 @@ class ChatViewModel(
         coroutineScope {
             val deltas = Channel<String>(Channel.UNLIMITED)
             val builder = StringBuilder()
-            val pump = launch {
+            // 显式切到 Default：默认会继承 viewModelScope 的 Main.immediate，
+            // 那样每次发布的 builder.toString()（整段累计 O(n²) 次字符复制）都压在主线程上。
+            val pump = launch(Dispatchers.Default) {
+                var lastPublishNanos = 0L
                 while (true) {
                     // 先挂起等第一个增量；拿到后把通道里剩下的全部排干，合并为一次发布。
                     val first = deltas.receiveCatching().getOrNull() ?: break
                     builder.append(first)
                     while (true) builder.append(deltas.tryReceive().getOrNull() ?: break)
+
+                    // 发布节流：UI 侧打字机最快也就每 2 帧取一次长度，按 SSE 频率发布纯属浪费。
+                    val waitNanos = PUBLISH_INTERVAL_NANOS - (System.nanoTime() - lastPublishNanos)
+                    if (lastPublishNanos != 0L && waitNanos > 0) {
+                        delay(waitNanos / 1_000_000)
+                        // 睡这一会儿新到的增量一起带走，合并成同一次发布。
+                        while (true) builder.append(deltas.tryReceive().getOrNull() ?: break)
+                    }
+                    lastPublishNanos = System.nanoTime()
                     _streaming.value = builder.toString()
                 }
             }
@@ -248,15 +295,30 @@ class ChatViewModel(
     fun consumeNotice() { _notice.value = null }
 
     /**
+     * 已预热到的消息条数。只被 [persistedMessages] 那条 flow 访问（`flatMapLatest` 会取消上一个
+     * 收集器，所以不会并发），因此不加锁。
+     */
+    private var prewarmedCount = 0
+
+    /**
      * 在消息切到 UI 前，后台预解析该会话所有 AI 回复的 Markdown 并写入 [MarkdownStateCache]，
      * 让 [com.jk.offermate.ui.components.MarkdownText] 首次组合即命中缓存，跳过空白帧。
      *
      * 只预热正文非空的 AI 消息；用户消息是纯文本，不走 Markdown 渲染。
+     *
+     * **只处理新增的那几条**：消息是只追加的，每次列表更新都把整段历史重扫一遍属于纯浪费——
+     * 长会话下那是「消息数 × 块数」次哈希查找，而每轮对话结束都会触发一次。
      */
     private suspend fun prewarmMarkdown(messages: List<ChatMessage>) {
-        messages.asSequence()
-            .filter { it.role == Role.ASSISTANT && it.content.isNotBlank() }
-            .forEach { warmBlocks(it.content) }
+        // 兜底：列表意外变短（如删除消息）就从头重来，避免漏热。
+        if (messages.size < prewarmedCount) prewarmedCount = 0
+        for (i in prewarmedCount until messages.size) {
+            val message = messages[i]
+            if (message.role == Role.ASSISTANT && message.content.isNotBlank()) {
+                warmBlocks(message.content)
+            }
+        }
+        prewarmedCount = messages.size
     }
 
     /**
@@ -311,6 +373,10 @@ class ChatViewModel(
     }
 
     companion object {
+
+        /** 流式文本发布的最小间隔（≈1 帧@120Hz）。见 [streamBatched] 的节流说明。 */
+        private const val PUBLISH_INTERVAL_NANOS = 16_000_000L
+
         fun provideFactory(
             initialConversationId: String?,
             questionId: String?,

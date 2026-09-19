@@ -50,6 +50,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +76,7 @@ import com.jk.offermate.data.local.entity.ConversationEntity
 import com.jk.offermate.ui.components.MarkdownParseMode
 import com.jk.offermate.ui.components.MarkdownText
 import com.jk.offermate.ui.components.PartialMarkdown
+import com.jk.offermate.ui.components.StreamingMarkdown
 import com.jk.offermate.ui.components.rememberTypewriterText
 import com.jk.offermate.ui.navigation.DockPillHeight
 import com.jk.offermate.ui.theme.Indigo
@@ -106,13 +108,21 @@ fun FollowUpScreen(
     question: AnsweredQuestion?,
     conversations: List<ConversationEntity> = emptyList(),
     activeConversationId: String? = null,
+    /** 已落库消息。**不含**正在流式生成的那条，后者走 [streamingText]。 */
     messages: List<ChatMessage>,
     sending: Boolean,
     /**
      * 是否正在**流式生成**（区别于 [sending]：更新答案等操作也会置 sending）。
-     * 仅当为 true 时，最后一条 AI 气泡才走打字机逐字揭示。
+     * 仅当为 true 时，流式气泡才走打字机逐字揭示；置 false 即定稿、一次性全量显示。
      */
     streaming: Boolean = false,
+    /** 是否在列表末尾显示流式气泡。与 [messages] 原子更新，避免流式结束瞬间闪烁。 */
+    showStreamingTail: Boolean = false,
+    /**
+     * 取当前的流式全文。**刻意收 lambda 而不是值**：这样它的 state 读取发生在真正显示文字的
+     * 叶子 composable 里，而不是这个页面级 composable——否则每个 token 都要重组整页。
+     */
+    streamingText: () -> String? = { null },
     error: String?,
     notice: String?,
     onBack: () -> Unit,
@@ -137,45 +147,46 @@ fun FollowUpScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // 正在流式生成的那条消息（必为最后一条 AI 消息）；无流式时为 -1。
-    val streamingIndex = if (streaming && messages.lastOrNull()?.role == Role.ASSISTANT) {
-        messages.lastIndex
-    } else {
-        -1
-    }
-
-    // 打字机放在**列表外层**：它的输出要参与决定行列表怎么切，不能待在某个 item 内部
-    // （item 会随滚动被回收，状态也就丢了）。
+    // 打字机的状态留在**页面作用域**：它不能待在 LazyColumn 的 item 里，item 会随滚动被回收、
+    // 状态一丢就会从头重打一遍。但它的**输出是 State**，读取点下沉到流式尾行那个叶子，
+    // 所以每个出字节拍只重组那一行，不再重组整页。
     val revealed = rememberTypewriterText(
-        fullText = if (streamingIndex >= 0) messages[streamingIndex].content else "",
-        isStreaming = streamingIndex >= 0
+        fullText = { streamingText().orEmpty() },
+        isStreaming = streaming
     )
-    val streamingText = if (streamingIndex >= 0) {
-        remember(revealed) { PartialMarkdown.sanitize(revealed) }
-    } else {
-        ""
-    }
 
-    // AI 消息按 Markdown 块展开成多个 item，这样只有可见的块需要组合与测量。
-    val chatRows = remember(messages, streamingIndex, streamingText) {
-        buildChatRows(messages, streamingIndex, streamingText)
+    // 流式文本的切块结果。两层 derivedStateOf 是关键：
+    // - 整体（含正在生成的尾块）每个出字节拍都变，只被下面两个派生值消费；
+    // - [settledBlocks] 掉最后一块后，内容在块与块之间是**不变的**，derivedStateOf 自带结果
+    //   相等性检查，于是它只在「又写完一块」时才通知下游（约 1~2 次/秒），页面重组频率就降到这个量级。
+    val streamBlocks = remember {
+        derivedStateOf { StreamingMarkdown.blocks(PartialMarkdown.sanitize(revealed.value)) }
     }
+    val settledBlocksState = remember { derivedStateOf { streamBlocks.value.dropLast(1) } }
+    val tailBlockState = remember { derivedStateOf { streamBlocks.value.lastOrNull().orEmpty() } }
+
+    // 已落库消息展开成行。**不含流式内容**，所以只在真正收到新消息时重建。
+    val chatRows = remember(messages) { buildChatRows(messages) }
     val rows = chatRows.rows
 
-    // 尚未出现任何 AI 内容时才显示“正在思考”。它是列表里额外的一个 item。
-    val lastMessage = messages.lastOrNull()
-    val showThinking = sending &&
-        (lastMessage == null || lastMessage.role != Role.ASSISTANT || lastMessage.content.isBlank())
+    // 页面级读取，但因为上面的相等性检查，这里是低频的（只在「又写完一块」时变）。
+    // 非流式时**不读**，这样页面就完全不订阅流式 state，空闲态一次多余重组都没有。
+    val settledBlocks = if (showStreamingTail) settledBlocksState.value else emptyList()
 
-    // 列表最后一个 item 的下标（含“正在思考”那一项）。**不再等于 messages.lastIndex**。
-    val lastItemIndex = rows.lastIndex + if (showThinking) 1 else 0
+    // 「正在思考」只在流式气泡还没出现时显示（如 updateAnswerFromDiscussion 那种不流式的等待）。
+    // 流式开始后，等待态由流式气泡自己承担（首个 token 到达前它显示思考指示），
+    // 这样就不必在页面级去读「流式文本是否还是空」，省掉一个高频读取点。
+    val showThinking = sending && !showStreamingTail
+
+    // 列表末尾附加项的数量：流式的已固化块 + 流式尾行 + 「正在思考」。
+    val trailingItems = (if (showStreamingTail) settledBlocks.size + 1 else 0) + if (showThinking) 1 else 0
+    val lastItemIndex = rows.size + trailingItems - 1
 
     // 这些都是普通参数、不是 snapshot state，长驻的 LaunchedEffect 直接捕获会读到启动那一刻的旧值。
     // 包一层 rememberUpdatedState 让下面的 snapshotFlow / derivedStateOf 能观察到更新。
     val currentScrollTo by rememberUpdatedState(scrollToIndex)
     val currentRows by rememberUpdatedState(chatRows)
     val currentLastItem by rememberUpdatedState(lastItemIndex)
-    val currentStreamingText by rememberUpdatedState(streamingText)
 
     // 有搜索跳转目标时优先定位到命中消息；否则新消息到达时自动滚到底部。
     // scrollToIndex 是**消息下标**，必须换算成 item 下标。
@@ -207,7 +218,9 @@ fun FollowUpScreen(
     // 2. 精确贴底：scrollToItem 只把 item **顶部**对齐视口顶部，气泡一长起来新生成的文字
     //    反而被顶到屏幕外。改用 scrollBy 直接推进偏移，等价于 Web 端直接写 scrollTop。
     LaunchedEffect(listState) {
-        snapshotFlow { currentStreamingText.length }
+        // 读的是打字机**已揭示**的长度，而不是已接收的长度——贴底要跟着看得见的文字走。
+        // snapshotFlow 在协程里读 state，不会引起重组；derivedStateOf 有缓存，这里不额外分配。
+        snapshotFlow { revealed.value.length }
             .sample(STICK_THROTTLE_MS)
             .collect {
                 val target = currentLastItem
@@ -294,8 +307,31 @@ fun FollowUpScreen(
                             ChatRowContent(row)
                         }
                     }
-                    // 仅在“尚无 AI 内容”时显示思考指示：流式首个 token 到达后，
-                    // 最后一项已是正在生长的 AI 块，无需再显示“正在思考”。
+
+                    if (showStreamingTail) {
+                        // 流式消息里**已经写完**的块：内容不再变化，和历史消息一样各自独立成 item，
+                        // 既能命中 MarkdownStateCache，也只在进入视口时才组合测量。
+                        itemsIndexed(
+                            items = settledBlocks,
+                            key = { index, _ -> "s$index" },
+                            contentType = { _, _ -> "ai" }
+                        ) { index, block ->
+                            val topPadding = if (index == 0 && rows.isNotEmpty()) MESSAGE_SPACING else 0.dp
+                            Box(Modifier.fillMaxWidth().padding(top = topPadding)) {
+                                MarkdownText(markdown = block, modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                        // 正在生成的那一块：整个流式期间只有**这一个 item** 在高频重组。
+                        item(key = "streamingTail", contentType = "ai") {
+                            val topPadding =
+                                if (settledBlocks.isEmpty() && rows.isNotEmpty()) MESSAGE_SPACING else 0.dp
+                            Box(Modifier.fillMaxWidth().padding(top = topPadding)) {
+                                StreamingTailRow(tailBlockState)
+                            }
+                        }
+                    }
+
+                    // 还没进入流式的等待态（如「用讨论更新答案」）才显示思考指示。
                     if (showThinking) {
                         item(key = "thinking") {
                             Box(Modifier.fillMaxWidth().padding(top = MESSAGE_SPACING)) {
@@ -601,19 +637,37 @@ private fun SessionSwitcherRow(
 private fun ChatRowContent(row: ChatRow) {
     when (row) {
         is ChatRow.User -> UserBubbleRow(row.content)
+        // 已写完的块内容不再变化：同步解析（单块很小，且多数已由 ChatViewModel 预热）并入缓存，
+        // 之后每次进入视口都是缓存命中。
         is ChatRow.AiBlock -> MarkdownText(
             markdown = row.text,
-            modifier = Modifier.fillMaxWidth(),
-            // 已写完的块内容不再变化：同步解析（单块很小，且多数已由 ChatViewModel 预热）
-            // 并入缓存，之后每次进入视口都是缓存命中。
-            // 只有流式生成中的最后一块走异步且不入缓存。
-            mode = if (row.isStreamingTail) {
-                MarkdownParseMode.ASYNC_TRANSIENT
-            } else {
-                MarkdownParseMode.BLOCKING
-            }
+            modifier = Modifier.fillMaxWidth()
         )
     }
+}
+
+/**
+ * 流式生成中的那一块。
+ *
+ * **整个流式期间只有这个 composable 在高频重组**——这是把重组范围压到叶子的落点：
+ * [tailBlock] 的 `.value` 读取发生在这里，所以打字机每次出字只让这一行失效，
+ * 页面、列表、以及前面所有已固化的块都不受影响。
+ *
+ * 首个 token 到达前尾块是空的，此时显示思考指示，避免气泡先闪一个空白行。
+ */
+@Composable
+private fun StreamingTailRow(tailBlock: State<String>) {
+    val text = tailBlock.value
+    if (text.isBlank()) {
+        ThinkingIndicator()
+        return
+    }
+    MarkdownText(
+        markdown = text,
+        modifier = Modifier.fillMaxWidth(),
+        // 每帧都是新内容：异步解析（不占主线程）且不入缓存（否则会把真实消息挤出 LRU）。
+        mode = MarkdownParseMode.ASYNC_TRANSIENT
+    )
 }
 
 /** 用户消息：右对齐气泡。 */

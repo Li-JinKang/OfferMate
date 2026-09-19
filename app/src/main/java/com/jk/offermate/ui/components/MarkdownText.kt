@@ -45,8 +45,20 @@ import com.mikepenz.markdown.compose.elements.MarkdownTableRow
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.MarkdownAnimations
+import com.mikepenz.markdown.model.MarkdownColors
+import com.mikepenz.markdown.model.MarkdownDimens
+import com.mikepenz.markdown.model.MarkdownExtendedSpans
+import com.mikepenz.markdown.model.MarkdownInlineContent
+import com.mikepenz.markdown.model.MarkdownPadding
+import com.mikepenz.markdown.model.MarkdownTypography
+import com.mikepenz.markdown.model.NoOpImageTransformerImpl
 import com.mikepenz.markdown.model.State
 import com.mikepenz.markdown.model.markdownAnimations
+import com.mikepenz.markdown.model.markdownAnnotator
+import com.mikepenz.markdown.model.markdownDimens
+import com.mikepenz.markdown.model.markdownExtendedSpans
+import com.mikepenz.markdown.model.markdownInlineContent
 import com.mikepenz.markdown.model.markdownPadding
 import kotlinx.coroutines.flow.conflate
 
@@ -111,49 +123,132 @@ private class ParsedMarkdown(val state: State.Success?)
 
 @Composable
 private fun MarkdownContent(parsed: ParsedMarkdown, modifier: Modifier) {
+    val config = chatMarkdownConfig()
+    // 这里**每个参数都要显式传**：漏掉的会落到 Markdown() 的默认参数表达式，
+    // 那些表达式每次组合都新建实例，等于白做（见 ChatMarkdownConfig 的说明）。
     Markdown(
-        state = parsed.state ?: State.Loading(),
+        state = parsed.state ?: LoadingState,
+        colors = config.colors,
+        typography = config.typography,
         modifier = modifier,
-        colors = markdownColor(
-            text = TextPrimary,
-            linkText = Indigo,
-            // 行内代码不加底色（库默认会填灰底），改为仅靠等宽小字号区分
-            inlineCodeBackground = Color.Transparent
-        ),
-        typography = rememberChatMarkdownTypography(),
-        // 列表块自身的上下留白置 0。AI 消息会按列表项切成多个 LazyColumn item（见 StreamingMarkdown），
-        // 留着这份留白的话，被切开的两项之间会多出两份、比同一个列表内部的项间距宽一截。
-        // 置 0 后「拆」与「不拆」的项间距都等于 listItemTop + listItemBottom，视觉上完全一致。
-        padding = markdownPadding(list = 0.dp),
-        // 关闭默认的 animateContentSize，内容更新（如流式）时不做尺寸动画，避免抖动。
-        animations = markdownAnimations(animateTextSize = { this }),
-        components = markdownComponents(
-            // 注意：it.content 是整篇 Markdown 全文，需用节点偏移切出当前代码块文本
-            codeFence = { CodeCard(nodeText(it.content, it.node)) },
-            codeBlock = { CodeCard(nodeText(it.content, it.node)) },
-            // 表格：库默认单元格 maxLines=1 + 省略号会截断内容。改为**允许换行**（不省略），
-            // 单元格文字完整显示；表格总宽超出可视区时库自带横向滚动生效。
-            table = {
-                MarkdownTable(
-                    content = it.content,
-                    node = it.node,
-                    style = it.typography.table,
-                    headerBlock = { c, h, w, s ->
-                        MarkdownTableHeader(
-                            content = c, header = h, tableWidth = w, style = s,
-                            maxLines = Int.MAX_VALUE, overflow = TextOverflow.Clip
-                        )
-                    },
-                    rowBlock = { c, h, w, s ->
-                        MarkdownTableRow(
-                            content = c, header = h, tableWidth = w, style = s,
-                            maxLines = Int.MAX_VALUE, overflow = TextOverflow.Clip
-                        )
-                    }
+        padding = config.padding,
+        dimens = config.dimens,
+        imageTransformer = ChatImageTransformer,
+        annotator = ChatAnnotator,
+        extendedSpans = config.extendedSpans,
+        inlineContent = config.inlineContent,
+        components = ChatComponents,
+        animations = config.animations
+    )
+}
+
+/**
+ * 解析未就绪时的占位 state。
+ *
+ * 必须单例：`State.Loading` 的 `referenceLinkHandler` 默认值每次新建，而它会被 provide 进
+ * **静态** local `LocalReferenceLinkHandler`，新实例就会把整棵子树打成待重组。
+ */
+private val LoadingState = State.Loading()
+
+/**
+ * 代码块与表格的自定义渲染组件。
+ *
+ * `markdownComponents` 不是 `@Composable`，可以直接提成顶层单例——这比放在组合里每帧新建一个
+ * 持有十几个 lambda 的对象划算得多。
+ */
+private val ChatComponents = markdownComponents(
+    // 注意：it.content 是整篇 Markdown 全文，需用节点偏移切出当前代码块文本
+    codeFence = { CodeCard(nodeText(it.content, it.node)) },
+    codeBlock = { CodeCard(nodeText(it.content, it.node)) },
+    // 表格：库默认单元格 maxLines=1 + 省略号会截断内容。改为**允许换行**（不省略），
+    // 单元格文字完整显示；表格总宽超出可视区时库自带横向滚动生效。
+    table = {
+        MarkdownTable(
+            content = it.content,
+            node = it.node,
+            style = it.typography.table,
+            headerBlock = { c, h, w, s ->
+                MarkdownTableHeader(
+                    content = c, header = h, tableWidth = w, style = s,
+                    maxLines = Int.MAX_VALUE, overflow = TextOverflow.Clip
+                )
+            },
+            rowBlock = { c, h, w, s ->
+                MarkdownTableRow(
+                    content = c, header = h, tableWidth = w, style = s,
+                    maxLines = Int.MAX_VALUE, overflow = TextOverflow.Clip
                 )
             }
         )
+    }
+)
+
+/** 同样不是 `@Composable`，提成单例。项目不用自定义 annotator / 图片变换，取库默认行为即可。 */
+private val ChatAnnotator = markdownAnnotator()
+private val ChatImageTransformer = NoOpImageTransformerImpl()
+
+/**
+ * 传给 [Markdown] 的一整套渲染配置，**引用跨帧稳定**。
+ *
+ * 为什么非得稳定 —— 库把 11 个配置值 provide 进 CompositionLocal，其中
+ * `LocalMarkdownPadding` / `LocalImageTransformer` / `LocalMarkdownInlineContent` /
+ * `LocalReferenceLinkHandler` 是 **`staticCompositionLocalOf`**：静态 local 不记录读取点，
+ * 值一变就把 provider 的整个 content 子树**无条件重组**，跳过机制完全失效。
+ * 而这些值的实现类（`DefaultMarkdownPadding` 等）都是普通 `class`——标了 `@Immutable`，
+ * 但 `equals` 仍是引用相等——每次组合调 `markdownPadding()` / `NoOpImageTransformerImpl()` /
+ * `markdownInlineContent()` 拿到的都是新实例。
+ *
+ * 于是改之前：**只要 [MarkdownContent] 重组一次，整块 Markdown 的所有节点都重建一遍**，
+ * 内容没变的节点也跑不掉。流式尾块每个出字节拍都重组，这个放大系数就一直挂在主线程上。
+ *
+ * 剩下几个走 `compositionLocalOf` 的（colors / typography / dimens / annotator / extendedSpans /
+ * components）只会失效真正读它们的后代，但 Markdown 的每个元素都读 typography 和 colors，
+ * 实际范围差不多，所以一并稳住。
+ */
+@Immutable
+private class ChatMarkdownConfig(
+    val colors: MarkdownColors,
+    val typography: MarkdownTypography,
+    val padding: MarkdownPadding,
+    val dimens: MarkdownDimens,
+    val animations: MarkdownAnimations,
+    val extendedSpans: MarkdownExtendedSpans,
+    val inlineContent: MarkdownInlineContent
+)
+
+/**
+ * 构造 [ChatMarkdownConfig]。
+ *
+ * 这几个工厂是 `@Composable`，没法提成顶层常量，所以**无条件调用**（Compose 要求组合结构稳定，
+ * 不能条件跳过 `@Composable` 调用），但只 `remember` 首批实例。代价是每次组合仍多分配几个短命
+ * 对象，换来的是 provide 进 CompositionLocal 的引用不再变。
+ *
+ * 复用首批实例的前提：这些值不依赖组合环境。[com.jk.offermate.ui.theme.OfferMateTheme] 固定用浅色
+ * 方案（`darkTheme` 参数当前被忽略），`markdownColor` 只从主题读 `onBackground` / `outlineVariant`，
+ * 都是常量。**日后真加深色模式，这里要改成 `remember(MaterialTheme.colorScheme) { … }`**，
+ * 否则切换主题后 Markdown 颜色不跟着变。
+ */
+@Composable
+private fun chatMarkdownConfig(): ChatMarkdownConfig {
+    val colors = markdownColor(
+        text = TextPrimary,
+        linkText = Indigo,
+        // 行内代码不加底色（库默认会填灰底），改为仅靠等宽小字号区分
+        inlineCodeBackground = Color.Transparent
     )
+    val typography = chatMarkdownTypography()
+    // 列表块自身的上下留白置 0。AI 消息会按列表项切成多个 LazyColumn item（见 StreamingMarkdown），
+    // 留着这份留白的话，被切开的两项之间会多出两份、比同一个列表内部的项间距宽一截。
+    // 置 0 后「拆」与「不拆」的项间距都等于 listItemTop + listItemBottom，视觉上完全一致。
+    val padding = markdownPadding(list = 0.dp)
+    val dimens = markdownDimens()
+    // 关闭默认的 animateContentSize，内容更新（如流式）时不做尺寸动画，避免抖动。
+    val animations = markdownAnimations(animateTextSize = { this })
+    val extendedSpans = markdownExtendedSpans()
+    val inlineContent = markdownInlineContent()
+    return remember {
+        ChatMarkdownConfig(colors, typography, padding, dimens, animations, extendedSpans, inlineContent)
+    }
 }
 
 /**
@@ -217,11 +312,12 @@ private val InlineCodeStyle = TextStyle(color = TextPrimary, fontFamily = FontFa
  * 对话专用的 Markdown 排版。库默认把 h1/h2 映射到 displaySmall/headlineMedium（36/28sp），
  * 在手机对话里标题会大到占满半屏。这里收敛到贴近主流 AI 对话的克制字号。
  *
- * （`markdownTypography` 本身是 @Composable，没法塞进 remember；把 TextStyle 提成顶层常量后，
- * 每次重组只剩一个轻量包装对象的分配。）
+ * 刻意**不叫** `rememberXxx`：`markdownTypography` 是 `@Composable`，这里没法自己 remember，
+ * 每次调用都返回新实例。记忆化统一由 [chatMarkdownConfig] 负责——早先那个 `remember` 前缀
+ * 骗过了自己，以为这层已经稳住了，其实新实例正是让下游 CompositionLocal 全量失效的原因。
  */
 @Composable
-private fun rememberChatMarkdownTypography() = markdownTypography(
+private fun chatMarkdownTypography() = markdownTypography(
     h1 = H1Style,
     h2 = H2Style,
     h3 = H3Style,

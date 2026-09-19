@@ -235,13 +235,17 @@ private fun AiChatConversation(
         )
     )
     val question by viewModel.question.collectAsStateWithLifecycle()
-    val messages by viewModel.messages.collectAsStateWithLifecycle()
+    val content by viewModel.content.collectAsStateWithLifecycle()
     val title by viewModel.title.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
     val canUpdateAnswer by viewModel.canUpdateAnswer.collectAsStateWithLifecycle()
     val streaming by viewModel.streamingActive.collectAsStateWithLifecycle()
+
+    // 刻意**不用 `by` 解构**：这样这个 composable 本身不读取它的 value，
+    // 每个 token 到达时就不会重组整页。真正的读取推迟到流式尾行那个叶子里（见 FollowUpScreen）。
+    val streamingTextState = viewModel.streamingText.collectAsStateWithLifecycle()
 
     // 输入内容随会话（chatKey）切换而重置
     var input by rememberSaveable(chatKey) { mutableStateOf("") }
@@ -279,9 +283,11 @@ private fun AiChatConversation(
         // 会话历史/切换交给抽屉，这里不用页内会话切换器
         conversations = emptyList(),
         activeConversationId = null,
-        messages = messages,
+        messages = content.messages,
         sending = sending,
         streaming = streaming,
+        showStreamingTail = content.showStreamingTail,
+        streamingText = { streamingTextState.value },
         error = error,
         notice = notice,
         onBack = {},

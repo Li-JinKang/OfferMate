@@ -48,9 +48,7 @@ internal sealed interface ChatRow {
         override val messageIndex: Int,
         override val isMessageStart: Boolean,
         val blockIndex: Int,
-        val text: String,
-        /** 是否是流式生成中的那一块（每帧变化，需异步解析且不入缓存）。 */
-        val isStreamingTail: Boolean
+        val text: String
     ) : ChatRow {
         override val key: String get() = "a$messageIndex-$blockIndex"
         override val contentType: String get() = "ai"
@@ -75,17 +73,12 @@ internal class ChatRows(
 }
 
 /**
- * 把消息列表展开成行列表。
+ * 把**已落库**的消息列表展开成行列表。
  *
- * @param streamingIndex 正在流式生成的消息下标；无流式时传 -1
- * @param streamingText 流式消息**当前要显示**的文本（已经过打字机截断与结构补全）。
- *   流式消息不走记忆化切分，因为它每帧都不同。
+ * 不再接收流式文本：正在生成的那条消息由页面单独渲染（见 `FollowUpScreen` 里的流式尾行），
+ * 否则每个出字节拍都要重建这整个列表，而列表里上百行里只有一行真的变了。
  */
-internal fun buildChatRows(
-    messages: List<ChatMessage>,
-    streamingIndex: Int,
-    streamingText: String
-): ChatRows {
+internal fun buildChatRows(messages: List<ChatMessage>): ChatRows {
     val rows = ArrayList<ChatRow>(messages.size * 4)
     val firstRowOfMessage = IntArray(messages.size)
 
@@ -96,26 +89,17 @@ internal fun buildChatRows(
             return@forEachIndexed
         }
 
-        val isStreaming = messageIndex == streamingIndex
-        val text = if (isStreaming) streamingText else message.content
-        if (text.isEmpty()) return@forEachIndexed
+        if (message.content.isEmpty()) return@forEachIndexed
 
-        val blocks = if (isStreaming) {
-            StreamingMarkdown.blocks(text)
-        } else {
-            StreamingMarkdown.blocksMemo(text)
-        }
         var emitted = 0
-        blocks.forEachIndexed { blockIndex, block ->
+        StreamingMarkdown.blocksMemo(message.content).forEachIndexed { blockIndex, block ->
             if (block.isEmpty()) return@forEachIndexed
             rows.add(
                 ChatRow.AiBlock(
                     messageIndex = messageIndex,
                     isMessageStart = emitted == 0,
                     blockIndex = blockIndex,
-                    text = block,
-                    // 只有流式消息的最后一块在变化
-                    isStreamingTail = isStreaming && blockIndex == blocks.lastIndex
+                    text = block
                 )
             )
             emitted++

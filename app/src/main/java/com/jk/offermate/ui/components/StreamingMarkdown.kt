@@ -22,6 +22,9 @@ object StreamingMarkdown {
     /** 短文本不切：整篇解析本来就便宜，切开反而多出若干次组合和缓存写入。 */
     private const val MIN_SPLIT_LENGTH = 200
 
+    /** 合并后单块的目标下限，见 [mergeShortBlocks]。 */
+    private const val MIN_BLOCK_LENGTH = 80
+
     private const val MEMO_MAX_ENTRIES = 300
 
     private val memo = object : LinkedHashMap<String, List<String>>(16, 0.75f, true) {
@@ -94,7 +97,41 @@ object StreamingMarkdown {
         }
         val tail = lines.subList(start, lines.size).joinToString("\n")
         if (tail.isNotEmpty() || result.isEmpty()) result.add(tail)
-        return result
+        return mergeShortBlocks(result)
+    }
+
+    /**
+     * 合并过短的相邻块。
+     *
+     * 按列表项下刀之后块数会很多——实测一篇 3000 字的回答切出 105 块、6000 字 210 块。
+     * 每块都是一个 LazyColumn item + 一个 `Markdown()` 实例（后者还带一整套渲染配置对象），
+     * 组合节点数量就成了新的固定开销。把相邻短块并到 [MIN_BLOCK_LENGTH] 以上，
+     * 105 块能压到 30 块上下，而单块仍然小到重解析很便宜。
+     *
+     * 贪心从前往后合并，所以**前缀分组是稳定的**：后面追加内容不会改变已经闭合的分组，
+     * 已定稿块仍然稳稳命中 [MarkdownStateCache]。
+     *
+     * **最后一块永远独占一组**：流式时它就是正在生成的那一块，必须保持最小，
+     * 否则每个出字节拍都要连带重解析前面几块，反而把 A 改造省下的开销又吃回去。
+     *
+     * 仍然保证 `joinToString("") == text`——只做顺序拼接，不增删字符。
+     */
+    private fun mergeShortBlocks(raw: List<String>): List<String> {
+        if (raw.size <= 2) return raw
+        val merged = ArrayList<String>(raw.size)
+        val pending = StringBuilder()
+        val lastIndex = raw.lastIndex
+        for (i in 0 until lastIndex) {
+            pending.append(raw[i])
+            if (pending.length >= MIN_BLOCK_LENGTH) {
+                merged.add(pending.toString())
+                pending.setLength(0)
+            }
+        }
+        // 还没攒够长度的尾巴自成一组（下次有新块时它会继续变长，直到闭合）。
+        if (pending.isNotEmpty()) merged.add(pending.toString())
+        merged.add(raw[lastIndex])
+        return merged
     }
 
     /**
