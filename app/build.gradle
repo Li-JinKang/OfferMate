@@ -61,6 +61,20 @@ android {
             minifyEnabled false
             shrinkResources false
         }
+        // 性能剖析专用：与 release **完全同构**（R8 + 资源压缩 + 基线 profile + 不可调试），
+        // 只多一个 <profileable android:shell="true"/>（见 src/profileable/AndroidManifest.xml），
+        // 让 Android Studio Profiler / Perfetto / simpleperf 能附加到进程。
+        //
+        // 为什么不用 debuggable：debuggable=true 会关掉一部分 ART 优化、改变 JIT 行为，
+        // 测出来的帧耗时比真实 release 差一截，结论不可用。profileable 不影响运行时性能。
+        //
+        // 与插件派生的 benchmarkRelease 的区别：那个归 baselineprofile 插件管（供宏基准用），
+        // 这个是自己的、意图明确的剖析包，不随基准工具链变动。
+        profileable {
+            initWith release
+            // initWith 会连 release 的签名一起复制过来，这里显式覆盖（下面的 configureEach 也会兜一遍）
+            matchingFallbacks = ['release']
+        }
     }
 
     // Baseline Profile 插件会从 release 派生出 nonMinifiedRelease / benchmarkRelease 两个仅用于测量的变体，
@@ -70,8 +84,10 @@ android {
     //    只能先卸载——而卸载会清掉本地对话数据，恰恰是生成 profile 需要走到的内容。
     //    用 debug 签名就是覆盖安装，数据保留。
     // 真正的 release 不受影响：无签名时 assembleRelease 仍产出未签名包，行为不变。
+    // 同样的理由适用于 profileable：它也是"仅用于本机测量"的包，用 debug 签名保证
+    // 能覆盖安装到现有开发包上、且不需要 keystore.properties。
     buildTypes.configureEach { bt ->
-        if (bt.name in ['nonMinifiedRelease', 'benchmarkRelease']) {
+        if (bt.name in ['nonMinifiedRelease', 'benchmarkRelease', 'profileable']) {
             bt.signingConfig = signingConfigs.debug
         }
     }
@@ -91,6 +107,14 @@ android {
             returnDefaultValues = true
         }
     }
+}
+
+// baselineprofile 插件会为**每个**非 debug 构建类型再派生一对 benchmarkXxx / nonMinifiedXxx 变体。
+// profileable 只是给人用 Profiler 附加的本机剖析包，不参与基线 profile 的生成与宏基准，
+// 派生出来的那两个纯属噪音（会挤在 Build Variants 下拉里）。这里直接禁用。
+androidComponents {
+    beforeVariants(selector().withBuildType('benchmarkProfileable')) { it.enable = false }
+    beforeVariants(selector().withBuildType('nonMinifiedProfileable')) { it.enable = false }
 }
 
 // 使用 AGP 内置 Kotlin 的扩展配置 JVM 目标

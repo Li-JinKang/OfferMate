@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  只给 profileable 变体追加 <profileable>，正式 release 的清单保持干净。
+
+  android:shell="true" 允许通过 adb shell 的工具（Android Studio Profiler、Perfetto、
+  simpleperf）附加到本进程采样。它**不改变运行时性能**，所以测出来的帧耗时与真实 release 一致；
+  这正是不用 debuggable=true 的原因——后者会关掉部分 ART 优化、让数据失去参考价值。
+
+  <profileable> 需要 API 29+（android:enabled 属性要 API 30+，这里不用它，
+  省掉一条 minSdk 26 下的 lint 警告）。设备低于 29 时该标签被系统忽略。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <profileable
+            android:shell="true"
+            tools:targetApi="29" />
+    </application>
+
+</manifest>

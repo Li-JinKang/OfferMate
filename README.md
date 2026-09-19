@@ -172,6 +172,33 @@ cd OfferMate
 
 首次启动后，进入「设置」页面填入你自己的模型 API Key（详见下一节），即可开始使用。
 
+### 性能剖析构建（`profileable`）
+
+做帧率/卡顿分析时**不要用 debug 包**：`debuggable=true` 会关掉部分 ART 优化、改变 JIT 行为，
+测出来的帧耗时比真实 release 差一截，结论不可用。
+
+`profileable` 变体与 `release` 完全同构（R8 + 资源压缩 + 基线 profile + 不可调试），
+只在清单里多一个 `<profileable android:shell="true" />`，让 Profiler / Perfetto / simpleperf
+能附加到进程。它用 debug 签名，所以能**覆盖安装**到现有开发包上，本地数据不会丢。
+
+```bash
+./gradlew :app:assembleProfileable
+# 产物：app/build/outputs/apk/profileable/app-profileable.apk
+```
+
+Android Studio 里：
+
+1. **Build > Select Build Variant**，把 `:app` 的变体切成 `profileable`
+2. 点 Run 按钮旁的 **More actions（⋮）> Profile 'app' with low overhead**
+   （较新版本的 Studio 叫 `Profiler: run 'app' as profileable (low overhead)`）
+
+要求设备 API 29+ 且带 Google Play 服务。profileable 覆盖绝大多数剖析任务；
+只有 **Java/Kotlin 内存分配记录**和 **heap dump** 必须用 debuggable 包
+（对应菜单里的 `complete data`）。
+
+`benchmarkRelease` / `nonMinifiedRelease` 是 baselineprofile 插件派生的，归基线 profile
+的生成与宏基准用，日常剖析用 `profileable` 就行。
+
 ## 关于 AI Key（BYOK）
 
 OfferMate 采用 **BYOK（Bring Your Own Key）** 模式：
