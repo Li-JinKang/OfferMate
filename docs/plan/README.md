@@ -55,6 +55,7 @@
 - [`xhs-reading.md`](./xhs-reading.md) — 小红书链接读取方案（静态 `__INITIAL_STATE__` 优先，WebView 登录态为后备）
 - [`ui-and-runtime.md`](./ui-and-runtime.md) — UI 导航结构（精简 3 Tab）与后台运行/任务调度设计
 - [`network-resilience.md`](./network-resilience.md) — 网络韧性：重试/限流退避、连接池分档、分析串行化
+- [`knowledge-base.md`](./knowledge-base.md) — 项目知识库搭建规划（代码地图 / ADR / 坑位卡 + 保鲜与防污染机制）
 
 > 当前实际进度与剩余缺口，以 `roadmap.md` 文末「未实现汇总」为准（最近校准：2026-09-18）。
 

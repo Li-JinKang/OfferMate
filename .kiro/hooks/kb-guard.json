@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "知识库主库写入守卫",
+      "trigger": "PreToolUse",
+      "description": "写入 docs/kb/{map,decisions,pitfalls} 时要求用户确认，防止未经审阅的内容进入知识库主库；docs/kb/inbox/ 放行。",
+      "matcher": "fs_write|str_replace|fs_append",
+      "action": {
+        "type": "command",
+        "command": "bash tools/kb-guard.sh",
+        "timeout": 15
+      }
+    }
+  ]
+}

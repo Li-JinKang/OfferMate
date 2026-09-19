@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "知识库锚点校验",
+      "trigger": "PostFileSave",
+      "description": "保存知识库卡片后立即跑锚点校验，即时暴露 front-matter 写错或锚点已失效（STALE）。",
+      "matcher": "docs/kb/.*\\.md$",
+      "action": {
+        "type": "command",
+        "command": "bash tools/kb-verify.sh --quiet",
+        "timeout": 60
+      }
+    }
+  ]
+}
