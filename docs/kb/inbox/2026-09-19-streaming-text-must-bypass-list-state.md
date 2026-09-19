@@ -5,7 +5,7 @@ anchors:
   - app/src/main/java/com/jk/offermate/ui/aichat/AiChatHubScreen.kt
   - app/src/main/java/com/jk/offermate/ui/followup/FollowUpScreen.kt
   - app/src/main/java/com/jk/offermate/ui/components/Typewriter.kt
-verified_commit: 0e7f3fb
+verified_commit: 403709a
 verified_at: 2026-09-19
 supersedes: null
 ---
@@ -13,6 +13,9 @@ supersedes: null
 # 约束：流式文本不得进入会话列表的数据流
 
 本卡描述的结构由 `0e7f3fb`（`perf(chat): 压缩流式输出的重组范围…`）引入。
+锚点 `Typewriter.kt` 在 `403709a` 中改过出字节拍（见
+`streaming-pace-must-be-time-not-frames.md`），已核对本卡的三条规则均未受影响——
+`rememberTypewriterText` 仍返回 `State<String>`、`fullText` 仍收 lambda——故 `verified_commit` 前移至该提交。
 
 ## 规则
 
