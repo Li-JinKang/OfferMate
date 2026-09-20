@@ -31,6 +31,9 @@ import kotlin.math.roundToInt
  * 两头的好处都要：节拍均匀，频率又不随刷新率漂移（60Hz 每 2 帧、120Hz 每 4 帧，都是约 30 次/秒）。
  * 出字**速度**同样按实测帧间隔换算，所以 `charsPerSecond` 在不同刷新率下表现一致。
  *
+ * 目标间隔本身还会按实测帧间隔上抬（见 [adaptiveEmitInterval]）：设备画不过来时自动降低出字频率，
+ * 而不是继续按 30 次/秒硬推。高端机不受影响。
+ *
  * **2）返回 [State] 而不是 [String]。** 调用方常常是页面级 composable，如果直接返回 String，
  * 每个出字节拍都会让整个页面重组（重建行列表、重跑 LazyColumn 的 content lambda）。
  * 返回 State 后，读取点可以下沉到真正显示文字的那个叶子 composable，
@@ -81,9 +84,12 @@ fun rememberTypewriterText(
                 }
                 lastFrameNanos = now
                 framesSinceEmit++
+                val frameIntervalMs = frameIntervalNanos / 1_000_000f
+                // 自适应节拍：设备实际画得越慢，出字间隔就拉得越长。见 [adaptiveEmitInterval]。
+                val targetIntervalMs = adaptiveEmitInterval(frameIntervalMs)
                 // 按实测帧间隔换算出「几帧出一次字」，让**出字频率与刷新率无关**。
                 // 60Hz → 2 帧，120Hz → 4 帧，都落在约 TARGET_EMIT_INTERVAL_MS。
-                val framesPerEmit = (TARGET_EMIT_INTERVAL_MS / (frameIntervalNanos / 1_000_000f))
+                val framesPerEmit = (targetIntervalMs / frameIntervalMs)
                     .roundToInt().coerceAtLeast(1)
                 // 帧数没攒够：这一帧什么都不改，不触发重组，几乎零成本。
                 if (!emitOnNextFrame && framesSinceEmit < framesPerEmit) continue
@@ -96,8 +102,12 @@ fun rememberTypewriterText(
                 val paced = ceil(elapsedMs * charsPerSecond / 1000f).toInt()
                 // 自适应加速：积压越多追得越快，避免网络突发一大段时显示严重滞后。
                 val step = if (gap > ACCEL_THRESHOLD) maxOf(paced, ceil(gap / ACCEL_DIVISOR).toInt()) else paced
-                displayLen.intValue =
-                    (displayLen.intValue + step.coerceAtLeast(1)).coerceAtMost(target().length)
+                // 打点只包住「写 state」这一下，不包后续的重组——重组发生在本帧更晚的阶段，
+                // 包不进来。它的作用是在 trace 上**标出哪些帧在出字**，好判断慢帧与出字是否相关。
+                traced(TraceLabels.EMIT) {
+                    displayLen.intValue =
+                        (displayLen.intValue + step.coerceAtLeast(1)).coerceAtMost(target().length)
+                }
             }
             // 追平后**挂起**等下一段增量。
             // 不能写成 `withFrameNanos` 里 continue 空转：那会让 Choreographer 一直排帧，
@@ -125,6 +135,8 @@ fun rememberTypewriterText(
 /**
  * 目标出字间隔（毫秒），约 30 次/秒：观感上已经完全连续。
  *
+ * 它是**下限基准**而不是定值——设备画不过来时 [adaptiveEmitInterval] 会往上抬。
+ *
  * **它是时间而不是帧数，这一点很重要。** 每次出字都会触发一轮
  * 重组 → 布局 → 重新录制绘制指令 → RenderThread 绘制，成本最终压在绘制和 GPU 吞吐上，
  * 而那个成本是按**每秒多少次**计的，跟屏幕刷新率没关系。
@@ -138,6 +150,42 @@ fun rememberTypewriterText(
  * 既保持节拍均匀（整数帧，不会在 3/4 帧之间跳），又让频率不随刷新率漂移。
  */
 private const val TARGET_EMIT_INTERVAL_MS = 32f
+
+/**
+ * 按实测帧间隔算出本次该用的出字间隔。
+ *
+ * ## 为什么要自适应
+ *
+ * [TARGET_EMIT_INTERVAL_MS] 是按「设备画得过来」定的。设备画不过来时会发生一件很坏的事：
+ * 实测帧间隔被拖长到接近甚至超过目标间隔，于是 `framesPerEmit` 被压到 1——**每一帧都在出字**，
+ * 每帧都要重解析 + 重测量 + 重绘。设备越慢，出字反而越贪心，正好是该退让的时候在加压。
+ *
+ * 这里给出字间隔加一个下限：**至少两帧一次**。于是
+ *
+ * | 实测帧间隔 | 出字间隔 | 出字频率 |
+ * |---|---|---|
+ * | 8.3ms（120Hz 正常） | 32ms | ~31 次/秒 |
+ * | 16.7ms（60Hz 正常） | 33ms | ~30 次/秒 |
+ * | 33ms（掉到 30fps） | 64ms | ~15 次/秒 |
+ * | 40ms 及以上 | 64ms（封顶） | ~15 次/秒 |
+ *
+ * 高端机行为与改造前完全一致；低端机自动把每秒绘制次数减半，腾出的帧预算让剩下的帧能按时交付。
+ * 观感损失由尾部渐显补偿（见 [InlineMarkdown.fadeTail]）——渐显让低频出字依然像连续流动。
+ *
+ * 公式是**无状态**的：帧间隔恢复后间隔自然回落，不需要计数器和衰减逻辑，也不会卡在降频档位。
+ *
+ * 上限 [MAX_EMIT_INTERVAL_MS] 是观感底线，约 15 次/秒。再低就不像"在打字"了，
+ * 而且到那个份上瓶颈多半也不在出字频率上。
+ */
+internal fun adaptiveEmitInterval(frameIntervalMs: Float): Float =
+    (frameIntervalMs * MIN_FRAMES_PER_EMIT)
+        .coerceIn(TARGET_EMIT_INTERVAL_MS, MAX_EMIT_INTERVAL_MS)
+
+/** 出字至少间隔这么多帧：留出「不出字的帧」来消化上一次出字带来的绘制工作。 */
+private const val MIN_FRAMES_PER_EMIT = 2f
+
+/** 出字间隔上限（约 15 次/秒），观感底线。 */
+private const val MAX_EMIT_INTERVAL_MS = 64f
 
 /** 表示"不截断，直接显示全文"。 */
 private const val NO_LIMIT = Int.MAX_VALUE

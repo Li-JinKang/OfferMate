@@ -101,18 +101,34 @@ object StreamingMarkdown {
     }
 
     /**
-     * 合并过短的相邻块。
+     * 合并过短的相邻块——但**只合并走不了轻量渲染路径的那些**。
      *
-     * 按列表项下刀之后块数会很多——实测一篇 3000 字的回答切出 105 块、6000 字 210 块。
-     * 每块都是一个 LazyColumn item + 一个 `Markdown()` 实例（后者还带一整套渲染配置对象），
-     * 组合节点数量就成了新的固定开销。把相邻短块并到 [MIN_BLOCK_LENGTH] 以上，
-     * 105 块能压到 30 块上下，而单块仍然小到重解析很便宜。
+     * ## 为什么要有这个限制
      *
-     * 贪心从前往后合并，所以**前缀分组是稳定的**：后面追加内容不会改变已经闭合的分组，
-     * 已定稿块仍然稳稳命中 [MarkdownStateCache]。
+     * 合并的原始动机是：按列表项下刀后块数很多（3000 字 105 块、6000 字 210 块），
+     * 而每块都是一个 LazyColumn item + 一个 `Markdown()` 实例，后者还带一整套渲染配置对象，
+     * 于是组合节点数成了新的固定开销。
      *
-     * **最后一块永远独占一组**：流式时它就是正在生成的那一块，必须保持最小，
-     * 否则每个出字节拍都要连带重解析前面几块，反而把 A 改造省下的开销又吃回去。
+     * [InlineMarkdown] 那条轻量路径把这个动机**消掉了一大半**：单段落 / 单标题 / 单列表项
+     * 只渲染成一两个 `BasicText`，没有配置对象、没有 11 个 CompositionLocal，多几十块无所谓。
+     * 反过来，把「标题 + 段落 + 列表项」粘成一个混合块，会让它们**丧失轻量路径的资格**，
+     * 被迫走完整渲染器——合并从优化变成了倒扣。
+     *
+     * 实测（JVM，1916 字样本）：无条件合并时固化块只有 10% 能走轻量路径，
+     * 按形态合并后是 63%。
+     *
+     * 所以规则改为：
+     * - 看起来是单一形态的块（[InlineMarkdown.looksSingleForm]）→ **保持独立**，让它走轻量路径；
+     * - 其余短块（引用、水平线、setext 标题这类碎块）→ 照旧贪心合并，减少完整渲染器的实例数。
+     *
+     * 判定用的是不解析的粗判：这个函数每个出字节拍都要跑，不能在里面做真解析。
+     *
+     * ## 不变的两条
+     *
+     * 贪心从前往后合并，所以**前缀分组仍然稳定**：后面追加内容不会改变已闭合的分组，
+     * 已定稿块稳稳命中缓存。
+     *
+     * **最后一块永远独占一组**：流式时它就是正在生成的那一块，必须保持最小。
      *
      * 仍然保证 `joinToString("") == text`——只做顺序拼接，不增删字符。
      */
@@ -121,15 +137,28 @@ object StreamingMarkdown {
         val merged = ArrayList<String>(raw.size)
         val pending = StringBuilder()
         val lastIndex = raw.lastIndex
-        for (i in 0 until lastIndex) {
-            pending.append(raw[i])
-            if (pending.length >= MIN_BLOCK_LENGTH) {
+
+        fun flushPending() {
+            if (pending.isNotEmpty()) {
                 merged.add(pending.toString())
                 pending.setLength(0)
             }
         }
+
+        for (i in 0 until lastIndex) {
+            val block = raw[i]
+            // 能自己走轻量路径的块不参与合并。注意要先把攒着的碎块吐出去，否则顺序会乱
+            // （拼接顺序是 joinToString("") == text 的前提）。
+            if (InlineMarkdown.looksSingleForm(block)) {
+                flushPending()
+                merged.add(block)
+                continue
+            }
+            pending.append(block)
+            if (pending.length >= MIN_BLOCK_LENGTH) flushPending()
+        }
         // 还没攒够长度的尾巴自成一组（下次有新块时它会继续变长，直到闭合）。
-        if (pending.isNotEmpty()) merged.add(pending.toString())
+        flushPending()
         merged.add(raw[lastIndex])
         return merged
     }

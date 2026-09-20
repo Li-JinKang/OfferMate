@@ -49,17 +49,51 @@ class StreamingMarkdownTest {
         assertEquals(listOf(text), StreamingMarkdown.blocks(text))
     }
 
+    /**
+     * 合并的目标**不是块数最少**，而是「让尽可能多的块能走 [InlineMarkdown] 的轻量路径」。
+     *
+     * 这两个目标曾经是一致的（那时每块都要一个 `Markdown()` 实例，块少就是省），
+     * 轻量路径落地后就冲突了：把标题 + 段落 + 列表项粘成混合块会让它们**丧失轻量资格**，
+     * 被迫走完整渲染器。实测无条件合并时固化块只有 10% 能走轻量路径。
+     *
+     * 所以这里守的是命中率，**不再守块数上限**。
+     */
     @Test
-    fun `合并短块后块数明显下降且最后一块独立`() {
+    fun `能轻量渲染的块不被合并拖下水`() {
         val text = longAnswer(8)
         val blocks = StreamingMarkdown.blocks(text)
-
-        // 合并前按列表项下刀会切出上百块；合并后应显著减少。
-        assertTrue("块数没降下来：${blocks.size}", blocks.size < 40)
-
-        // 除最后一块外，每块都应达到下限（或是攒不够长度的那个收尾组）。
         val settled = blocks.dropLast(1)
-        assertTrue("固化块不该有大量超短块", settled.count { it.length < 80 } <= 1)
+
+        val hit = settled.count { InlineMarkdown.annotate(it, store = false) != null }
+        assertTrue(
+            "固化块的轻量路径命中率过低：$hit/${settled.size}",
+            hit * 100 / settled.size >= 80
+        )
+    }
+
+    /** 走不了轻量路径的碎块（引用、水平线这类）仍然要合并，否则各占一个完整渲染器实例。 */
+    @Test
+    fun `非单一形态的碎块仍然合并`() {
+        val text = buildString {
+            repeat(8) {
+                append("> 引用行 $it\n\n")
+                append("---\n\n")
+            }
+            append("收尾段落\n")
+        }
+        val blocks = StreamingMarkdown.blocks(text)
+        // 16 个碎块 + 收尾；碎块应被并成少数几组
+        assertTrue("碎块没被合并：${blocks.size}", blocks.size < 10)
+        assertEquals(text, blocks.joinToString(""))
+    }
+
+    /** 最后一块永远独占一组：流式时它是正在生成的那块，必须保持最小。 */
+    @Test
+    fun `最后一块独立`() {
+        val text = longAnswer(8)
+        val blocks = StreamingMarkdown.blocks(text)
+        val raw = text.trimEnd('\n')
+        assertTrue("最后一块不该吸收前面的内容", blocks.last().length < raw.length / 2)
     }
 
     /**

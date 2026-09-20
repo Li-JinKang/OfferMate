@@ -83,7 +83,11 @@ object MarkdownStateCache {
      * 同步解析，所以这条路径不会让情况变差——反而从「每次重组都解析」变成「每份内容只解析一次」。
      * 流式中间态**不要**走这里，走 [warm] 的异步路径。
      */
-    fun getOrParseBlocking(content: String): State {
+    fun getOrParseBlocking(content: String): State = traced(TraceLabels.PARSE_BLOCKING) {
+        parseBlockingInternal(content)
+    }
+
+    private fun parseBlockingInternal(content: String): State {
         peek(content)?.let { return it }
         val handler = ReferenceLinkHandlerImpl()
         return try {

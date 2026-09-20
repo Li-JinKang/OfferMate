@@ -2,6 +2,7 @@ package com.jk.offermate.ui.components
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -102,6 +105,24 @@ fun MarkdownText(
     modifier: Modifier = Modifier,
     mode: MarkdownParseMode = MarkdownParseMode.BLOCKING
 ) {
+    // 段落 / 标题 / 单列表项走轻量路径：一两个 BasicText 取代整棵 Markdown 组件树。
+    // 判定与渲染都在 [InlineMarkdown] 里，返回 null 表示这块需要完整渲染器。
+    val block = remember(markdown, mode) {
+        InlineMarkdown.annotate(markdown, store = mode != MarkdownParseMode.ASYNC_TRANSIENT)
+    }
+    if (block != null) {
+        InlineBlockText(block, modifier)
+        return
+    }
+    FullMarkdownText(markdown, modifier, mode)
+}
+
+/**
+ * 走完整渲染器的那条路径。单独拆出来是为了让流式尾块的回退不必重做一次轻量判定
+ * （判定含一次解析，尾块每个节拍都是新文本、缓存命不中，白算一次就是白花几十微秒）。
+ */
+@Composable
+private fun FullMarkdownText(markdown: String, modifier: Modifier, mode: MarkdownParseMode) {
     // 解析走 [MarkdownStateCache]，不再用 rememberMarkdownState(immediate = true)：后者会在
     // **每次重组**都同步全量重解析（parseBlocking 写在组合体里、不在 remember 内），
     // 流式期间等于每个 token 卡一次主线程。详见 MarkdownStateCache 的注释。
@@ -120,6 +141,83 @@ fun MarkdownText(
 /** 让解析结果可以作为稳定参数传递，见 [MarkdownText] 里的说明。 */
 @Immutable
 private class ParsedMarkdown(val state: State.Success?)
+
+/**
+ * 轻量路径的渲染：**整块只有一两个文本节点**。见 [InlineMarkdown] 的说明。
+ *
+ * 用 `BasicText` 而不是 Material3 的 `Text`，是为了与渲染库保持一致——库内部的
+ * `MarkdownBasicText` 也是 `BasicText`，不读 `LocalTextStyle`。用 `Text` 会先与主题的
+ * 默认 TextStyle 做 merge，同一段文字在两条路径下就可能有细微的字体/字重差异。
+ *
+ * 留白是逐 dp 复刻库的结构，不是重新设计的：段落/标题只有块级留白；列表项另有
+ * `listItemTop` / `listItemBottom`（库把它们加在 `Row` 上），而 `padding.list` 项目已设为 0
+ * （见 `chatMarkdownConfig`），所以这里不体现。
+ */
+@Composable
+internal fun InlineBlockText(block: InlineMarkdown.Block, modifier: Modifier = Modifier) {
+    val top = MARKDOWN_BLOCK_SPACING * (1 + block.leadingBreaks)
+    val bottom = MARKDOWN_BLOCK_SPACING * block.trailingBreaks
+    val marker = block.marker
+    if (marker == null) {
+        BasicText(
+            text = block.text,
+            style = block.style,
+            modifier = modifier
+                .padding(top = top, bottom = bottom)
+                .then(if (block.isHeading) Modifier.semantics { heading() } else Modifier)
+        )
+        return
+    }
+    // 列表项：复刻库 MarkdownListItems 的 Row 结构，但省掉 marker 外的 Box 与内容外的 Column
+    // （都只包一个子节点、无额外约束，布局等价）。
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = top + LIST_ITEM_TOP, bottom = bottom + LIST_ITEM_BOTTOM)
+    ) {
+        BasicText(
+            text = marker,
+            style = block.style,
+            // 库的 MarkdownBulletList 给 bullet 多加了一份 listItemBottom，有序列表没有。
+            modifier = if (block.markerBottomPadding) Modifier.padding(bottom = LIST_ITEM_BOTTOM) else Modifier
+        )
+        BasicText(text = block.text, style = block.style)
+    }
+}
+
+/**
+ * 渲染库在每个顶层块级节点前插入的留白（`markdownPadding().block` 的默认值），
+ * 以及列表项的上下留白（`listItemTop` / `listItemBottom` 的默认值）。
+ * 轻量路径靠它们复刻同样的间距，见 [InlineMarkdown.Block]。
+ *
+ * **`chatMarkdownConfig()` 若改了这几个 `markdownPadding(...)` 参数，这里要跟着改。**
+ */
+private val MARKDOWN_BLOCK_SPACING = 2.dp
+private val LIST_ITEM_TOP = 4.dp
+private val LIST_ITEM_BOTTOM = 4.dp
+
+/**
+ * 流式生成中的那一块。整个流式期间只有这一个 composable 在高频重组，所以这里的每一项成本
+ * 都要乘上出字频率（约 15~30 次/秒）。
+ *
+ * 能走轻量路径时额外叠一层**尾部渐显**：新出的字从透明浮现到不透明，而不是直接蹦出来。
+ * 这一层的意义不只是好看——它让更低的出字频率也显得连续，是 `Typewriter` 敢在低端机上
+ * 自适应降频的前提。
+ *
+ * 走不了轻量路径的块（代码块、表格、列表、标题）退回完整渲染器，此时没有渐显：
+ * 那些块本来就由 `PartialMarkdown` 按行揭示，节拍感不明显。
+ */
+@Composable
+fun StreamingMarkdownTail(text: String, modifier: Modifier = Modifier) {
+    // store = false：流式中间态每个节拍都是新文本，入缓存只会把真实内容挤出 LRU。
+    val faded = remember(text) { InlineMarkdown.annotate(text, store = false)?.faded() }
+    if (faded != null) {
+        InlineBlockText(faded, modifier)
+        return
+    }
+    // 直接走 FullMarkdownText 而不是 MarkdownText：后者会把刚做过的轻量判定再做一遍。
+    FullMarkdownText(text, modifier, MarkdownParseMode.ASYNC_TRANSIENT)
+}
 
 @Composable
 private fun MarkdownContent(parsed: ParsedMarkdown, modifier: Modifier) {
@@ -292,13 +390,15 @@ private fun rememberStreamingMarkdownState(markdown: String, store: Boolean): St
 
 // 对话正文/标题的字号方案。提到顶层常量：这些 TextStyle 不依赖组合环境，
 // 流式期间每帧给每个气泡重新 new 一整套纯属浪费。
-private val BodyStyle = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp)
-private val H1Style = TextStyle(color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 30.sp)
-private val H2Style = TextStyle(color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 27.sp)
-private val H3Style = TextStyle(color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 24.sp)
-private val H4Style = TextStyle(color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp)
-private val H5Style = TextStyle(color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp)
-private val H6Style = TextStyle(color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, lineHeight = 18.sp)
+// BodyStyle / InlineCodeStyle 是 internal：轻量路径（[InlineMarkdown]）必须用同一份样式，
+// 否则两条路径渲染同一段文字会有视觉差。
+internal val BodyStyle = TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 23.sp)
+internal val H1Style = TextStyle(color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 30.sp)
+internal val H2Style = TextStyle(color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 27.sp)
+internal val H3Style = TextStyle(color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 24.sp)
+internal val H4Style = TextStyle(color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp)
+internal val H5Style = TextStyle(color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp)
+internal val H6Style = TextStyle(color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, lineHeight = 18.sp)
 
 /** quote 颜色决定引用块左侧竖条的颜色 —— 从灰色改为天蓝色。 */
 private val QuoteStyle = TextStyle(color = QuoteAccent, fontSize = 15.sp, lineHeight = 23.sp)
@@ -306,7 +406,8 @@ private val CodeStyle =
     TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 20.sp)
 
 /** 行内代码：无底色，靠等宽 + 更小字号（较正文 15sp 小）与正文区分。 */
-private val InlineCodeStyle = TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+internal val InlineCodeStyle =
+    TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
 
 /**
  * 对话专用的 Markdown 排版。库默认把 h1/h2 映射到 displaySmall/headlineMedium（36/28sp），

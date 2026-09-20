@@ -73,10 +73,12 @@ import com.jk.offermate.agent.pipeline.AnsweredQuestion
 import com.jk.offermate.agent.ChatMessage
 import com.jk.offermate.agent.Role
 import com.jk.offermate.data.local.entity.ConversationEntity
-import com.jk.offermate.ui.components.MarkdownParseMode
 import com.jk.offermate.ui.components.MarkdownText
 import com.jk.offermate.ui.components.PartialMarkdown
+import com.jk.offermate.ui.components.TraceLabels
+import com.jk.offermate.ui.components.traced
 import com.jk.offermate.ui.components.StreamingMarkdown
+import com.jk.offermate.ui.components.StreamingMarkdownTail
 import com.jk.offermate.ui.components.rememberTypewriterText
 import com.jk.offermate.ui.navigation.DockPillHeight
 import com.jk.offermate.ui.theme.Indigo
@@ -160,7 +162,11 @@ fun FollowUpScreen(
     // - [settledBlocks] 掉最后一块后，内容在块与块之间是**不变的**，derivedStateOf 自带结果
     //   相等性检查，于是它只在「又写完一块」时才通知下游（约 1~2 次/秒），页面重组频率就降到这个量级。
     val streamBlocks = remember {
-        derivedStateOf { StreamingMarkdown.blocks(PartialMarkdown.sanitize(revealed.value)) }
+        derivedStateOf {
+            traced(TraceLabels.BLOCKS) {
+                StreamingMarkdown.blocks(PartialMarkdown.sanitize(revealed.value))
+            }
+        }
     }
     val settledBlocksState = remember { derivedStateOf { streamBlocks.value.dropLast(1) } }
     val tailBlockState = remember { derivedStateOf { streamBlocks.value.lastOrNull().orEmpty() } }
@@ -662,12 +668,8 @@ private fun StreamingTailRow(tailBlock: State<String>) {
         ThinkingIndicator()
         return
     }
-    MarkdownText(
-        markdown = text,
-        modifier = Modifier.fillMaxWidth(),
-        // 每帧都是新内容：异步解析（不占主线程）且不入缓存（否则会把真实消息挤出 LRU）。
-        mode = MarkdownParseMode.ASYNC_TRANSIENT
-    )
+    // 渲染策略（轻量单节点 + 尾部渐显，或退回完整渲染器）都在 StreamingMarkdownTail 里。
+    StreamingMarkdownTail(text = text, modifier = Modifier.fillMaxWidth())
 }
 
 /** 用户消息：右对齐气泡。 */

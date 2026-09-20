@@ -11,6 +11,7 @@ import com.jk.offermate.agent.chat.FollowUpService
 import com.jk.offermate.agent.chat.QuestionContext
 import com.jk.offermate.data.repository.ConversationRepository
 import com.jk.offermate.data.repository.QuestionRepository
+import com.jk.offermate.ui.components.InlineMarkdown
 import com.jk.offermate.ui.components.MarkdownStateCache
 import com.jk.offermate.ui.components.StreamingMarkdown
 import kotlinx.coroutines.Dispatchers
@@ -329,7 +330,11 @@ class ChatViewModel(
      */
     private suspend fun warmBlocks(content: String) {
         StreamingMarkdown.blocksMemo(content).forEach { block ->
-            if (block.isNotBlank()) MarkdownStateCache.warm(block)
+            if (block.isBlank()) return@forEach
+            // 段落块（占多数）走轻量渲染路径，缓存的是 AnnotatedString 而不是 AST，
+            // 预热必须走对应的那一条，否则 UI 首次组合时还是要同步解析一遍。
+            // annotate 顺便把「这块不是段落」的判定也缓存下来，UI 侧连判定都不用重做。
+            if (InlineMarkdown.annotate(block) == null) MarkdownStateCache.warm(block)
         }
     }
 
@@ -374,8 +379,17 @@ class ChatViewModel(
 
     companion object {
 
-        /** 流式文本发布的最小间隔（≈1 帧@120Hz）。见 [streamBatched] 的节流说明。 */
-        private const val PUBLISH_INTERVAL_NANOS = 16_000_000L
+        /**
+         * 流式文本发布的最小间隔。见 [streamBatched] 的节流说明。
+         *
+         * 对齐打字机的**基准**出字间隔（`Typewriter.TARGET_EMIT_INTERVAL_MS`），而不是一帧的时长：
+         * 下游只用这个值推进「目标长度」，发布得比出字还密，多出来的那些除了每次全量
+         * `builder.toString()`（长回复累计 O(n²) 字节拷贝 + 同规模垃圾）之外什么也没带来。
+         * 低端机上这份 GC 压力本身就是掉帧来源。
+         *
+         * 不必跟着打字机的自适应降频一起往上抬：发布快于消费只是有点浪费，慢于消费会让文字发涩。
+         */
+        private const val PUBLISH_INTERVAL_NANOS = 32_000_000L
 
         fun provideFactory(
             initialConversationId: String?,
