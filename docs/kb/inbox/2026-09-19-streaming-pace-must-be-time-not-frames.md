@@ -74,7 +74,34 @@ Choreographer#doFrame                     72.43%
 
 两者解法相反，所以**先量再改**。`Debug GPU Overdraw` 比 trace 更快能判断是不是 overdraw。
 
-## 附带结论：主线程重组已经不是瓶颈，别再往那儿优化
+## ⚠️ 2026-09-20 更正：本卡的「瓶颈在绘制/GPU 侧」结论已被推翻
+
+一份新的 Janky frames 数据（Android Studio Profiler，System Trace，6 个 janky 帧）显示：
+
+| Frame Duration | Application | GPU | Composition |
+|---|---|---|---|
+| 33.67ms | 14.26ms | **604µs** | 8.79ms |
+| 21.35ms | 18.09ms | **698µs** | 8.29ms |
+| 40.22ms | 25.85ms | **726µs** | 14.62ms |
+| 20.14ms | 2.82ms | **703µs** | 14.72ms |
+| 25.94ms | 21.89ms | **1.17ms** | 14.24ms |
+| 25.10ms | 4.10ms | **1.73ms** | 14.97ms |
+
+**GPU 只占 0.6~1.7ms/帧，不是瓶颈。** 两个大头是 `Application`（2.8~25.9ms，波动极大）
+与 `Composition`（8.3~15.0ms，持续高）。GPU 既然很快，`Application` 里 RenderThread 就不慢，
+所以那 14~25ms 基本都在 UI 线程的 `doFrame` 里。
+
+所以下面这段「继续优化重组/解析拿不到收益」**不成立**，不要再据此跳过主线程方向。
+
+推翻的原因是本卡的读法本身有漏洞：`postAndWait` 高只说明「UI 线程在等 RenderThread」，
+而 RenderThread 的时间 = 同步 display list + 发 GPU 命令 + 等 GPU。本卡直接跳到了"等 GPU"，
+**没有排除"同步一个很大的 display list"**。下面那张表也印证了这点：
+`Record View#draw()` 0.93ms/帧意味着绘制指令量不小。
+
+**教训：不要从「UI 线程在等」推断「GPU 慢」。必须看 GPU 列本身，或展开 RenderThread。**
+两个结论解法相反（减绘制内容量 vs 减主线程工作），先量再改。
+
+## 附带结论（⚠️ 已被上面的更正推翻，保留以记录当时的判断）：主线程重组已经不是瓶颈，别再往那儿优化
 
 同一份 trace 折算到每帧：
 
