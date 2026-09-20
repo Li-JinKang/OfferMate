@@ -1,19 +1,20 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  备份/迁移规则（`android:dataExtractionRules`，作用于 API 31+）。
+  API 30 及以下走 backup_rules.xml —— 两套配置各自独立生效，改一份不够。
+
+  cloud-backup（Google 云备份）与 device-transfer（换机 D2D 直传）是两条独立通道，
+  必须各自声明，否则漏掉的那条仍会搬运密文。
+
+  排除 offermate_secure_prefs.xml 的理由见 backup_rules.xml 里的说明：
+  EncryptedSharedPreferences 的主密钥在 Android Keystore 里不随备份走，
+  恢复密文只会得到一个打不开的文件并在首次读 Key 时抛异常。
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="sharedpref" path="offermate_secure_prefs.xml" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="offermate_secure_prefs.xml" />
     </device-transfer>
-    -->
 </data-extraction-rules>

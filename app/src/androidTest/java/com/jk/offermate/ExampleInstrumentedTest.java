@@ -21,6 +21,8 @@ public class ExampleInstrumentedTest {
     public void useAppContext() {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals("com.jk.offermate", appContext.getPackageName());
+        // 不能硬编码 "com.jk.offermate"：debug 属于"本机组"，带 applicationIdSuffix
+        // （见 app/build.gradle 里 localDevBuildTypes 的说明），实际包名随变体变化。
+        assertEquals(BuildConfig.APPLICATION_ID, appContext.getPackageName());
     }
 }

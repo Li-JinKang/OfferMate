@@ -21,18 +21,53 @@ if (hasReleaseSigning) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// 开发期 API Key 自动回填：从 local.properties 读 devApiKey，只注入 debug 包的 BuildConfig。
+// 动机是 API Key 存在 EncryptedSharedPreferences 里，主密钥在 Android Keystore 按 app UID 归属，
+// 随卸载删除——它是唯一"备份脚本也带不回来"的配置（见 tools/dev-backup.sh 的说明）。
+// 与其每次重装手动粘贴，不如让 debug 包启动时发现 Key 为空就自己填上。
+//
+// 安全性：local.properties 已在 .gitignore 里，不会入库；release 变体拿到的是空串
+// （默认值在 defaultConfig 里给），所以正式包不含任何 Key。
+def localPropertiesFile = rootProject.file('local.properties')
+def localProperties = new Properties()
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+def devApiKey = localProperties.getProperty('devApiKey', '')
+def devApiProvider = localProperties.getProperty('devApiProvider', '')
+
+// buildConfigField 的值是直接拼进 Java 源码的字面量，必须自己转义反斜杠与引号
+def bcString = { String raw ->
+    '"' + (raw ?: '').replace('\\', '\\\\').replace('"', '\\"') + '"'
+}
+
+// 本机开发/测量包共用的 applicationId 后缀，定义在 gradle.properties（:baselineprofile 也读它）
+def devAppIdSuffix = providers.gradleProperty('offermateDevAppIdSuffix').getOrElse('.dev')
+
+// 正式包的 applicationId（唯一定义处，defaultConfig 与下面的 variant 覆盖都用它）
+def baseApplicationId = 'com.jk.offermate'
+
+// 「本机组」= 只会装在开发者自己设备上的构建类型。详见下方 buildTypes 里的长注释。
+// 放在脚本顶层是因为 android {} 与 androidComponents {} 两个块都要用到它。
+def localDevBuildTypes = ['debug', 'nonMinifiedRelease', 'benchmarkRelease', 'profileable']
+
 android {
     namespace 'com.jk.offermate'
     compileSdk 35
 
     defaultConfig {
-        applicationId "com.jk.offermate"
+        applicationId baseApplicationId
         minSdk 26
         targetSdk 35
         versionCode 1
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // 默认空：只有 debug 变体会被覆盖成真实值，release 因此天然不含 Key，
+        // 运行时逻辑也不需要靠 BuildConfig.DEBUG 判断（空串即"不回填"）。
+        buildConfigField "String", "DEV_API_KEY", bcString('')
+        buildConfigField "String", "DEV_API_PROVIDER", bcString('')
     }
 
     signingConfigs {
@@ -60,6 +95,9 @@ android {
             // 调试构建保持不混淆，便于定位问题
             minifyEnabled false
             shrinkResources false
+            // 开发期 Key 自动回填（值来自 local.properties，不入库）
+            buildConfigField "String", "DEV_API_KEY", bcString(devApiKey)
+            buildConfigField "String", "DEV_API_PROVIDER", bcString(devApiProvider)
         }
         // 性能剖析专用：与 release **完全同构**（R8 + 资源压缩 + 基线 profile + 不可调试），
         // 只多一个 <profileable android:shell="true"/>（见 src/profileable/AndroidManifest.xml），
@@ -77,17 +115,37 @@ android {
         }
     }
 
-    // Baseline Profile 插件会从 release 派生出 nonMinifiedRelease / benchmarkRelease 两个仅用于测量的变体，
-    // 它们默认继承 release 的签名配置。这里统一改用 debug 签名，原因有两个：
-    // 1. 没有 keystore.properties 时 release 未签名，这两个变体根本装不上设备；
-    // 2. 有正式签名时，它们与设备上已装的 debug 开发包签名冲突（INSTALL_FAILED_UPDATE_INCOMPATIBLE），
-    //    只能先卸载——而卸载会清掉本地对话数据，恰恰是生成 profile 需要走到的内容。
-    //    用 debug 签名就是覆盖安装，数据保留。
-    // 真正的 release 不受影响：无签名时 assembleRelease 仍产出未签名包，行为不变。
-    // 同样的理由适用于 profileable：它也是"仅用于本机测量"的包，用 debug 签名保证
-    // 能覆盖安装到现有开发包上、且不需要 keystore.properties。
+    // ---- 本机组 vs 正式包：签名与 applicationId 的统一约定 ----
+    //
+    // 「本机组」= 只会装在开发者自己设备上的包：debug（日常开发）、profileable（性能剖析）、
+    // nonMinifiedRelease / benchmarkRelease（baselineprofile 插件派生，用于采 profile 和跑宏基准）。
+    // 这一组统一做两件事：**同一个 debug 签名** + **同一个 applicationId 后缀**。
+    //
+    // 为什么要同签名：
+    // 1. 没有 keystore.properties 时 release 未签名，派生的测量变体根本装不上设备；
+    // 2. 有正式签名时，它们与设备上已装的 debug 开发包签名冲突
+    //    （INSTALL_FAILED_UPDATE_INCOMPATIBLE），只能先卸载。
+    //
+    // 为什么要同后缀，而且必须**整组**一起加：
+    // 后缀把本机组与正式 release 分成设备上并存的两个应用，从此互不覆盖，
+    // 再也不会因为"装过正式包又切回 debug"被迫卸载（卸载会清掉题库、简历记忆、API Key，
+    // 其中 API Key 连备份脚本都救不回来——主密钥在 Android Keystore 里随卸载删除）。
+    // 但后缀只给 debug 是错的：测量变体要和 debug 开发包**共享数据目录**，
+    // 因为采 profile 依赖设备上真实的对话/题库数据（见 BaselineProfileGenerator 的注释）。
+    // 只给 debug 加后缀会把测量变体隔离成另一个空数据的应用，正好废掉它的用途。
+    //
+    // 正式 release 不在这一组：无后缀、用正式签名，行为完全不变
+    // （无 keystore.properties 时仍产出未签名包）。它与本机组的签名"冲突"因此不再存在，
+    // 两者是不同的 applicationId。
+    //
+    // 后缀值定义在 gradle.properties 的 offermateDevAppIdSuffix，:baselineprofile 也读同一个值。
+    // 新增构建类型时，判断它属于哪一组，属于本机组就加进脚本顶部的 localDevBuildTypes。
+    //
+    // 这里只管签名；applicationId 的后缀在文件末尾的 androidComponents.onVariants 里设，
+    // 原因见那段注释（buildType.applicationIdSuffix 会被 baselineprofile 插件覆盖）。
     buildTypes.configureEach { bt ->
-        if (bt.name in ['nonMinifiedRelease', 'benchmarkRelease', 'profileable']) {
+        if (bt.name in localDevBuildTypes) {
+            // 对 debug 是 no-op（它本来就是 debug 签名），统一写在这里是为了让"整组同签名"只有一处约定
             bt.signingConfig = signingConfigs.debug
         }
     }
@@ -98,6 +156,8 @@ android {
 
     buildFeatures {
         compose true
+        // AGP 8 默认关闭 BuildConfig 生成；开发期 Key 回填与 applicationId 断言都要用它
+        buildConfig true
     }
 
     testOptions {
@@ -115,6 +175,24 @@ android {
 androidComponents {
     beforeVariants(selector().withBuildType('benchmarkProfileable')) { it.enable = false }
     beforeVariants(selector().withBuildType('nonMinifiedProfileable')) { it.enable = false }
+
+    // 本机组统一加 applicationId 后缀（与正式 release 在设备上并存，互不覆盖）。
+    //
+    // 为什么不能只靠 buildTypes 里的 applicationIdSuffix：
+    // baselineprofile 插件会在更后面用 variant API 把它派生的 nonMinifiedRelease /
+    // benchmarkRelease 的 applicationId 设回被测应用的值，把 buildType 上的后缀盖掉。
+    // 实测过：configureEach 里设的 `.dev` 在 buildType 属性上确实生效了，
+    // 但这两个变体的 merged manifest 里 package 仍是无后缀的 com.jk.offermate。
+    // variant API 是最终权威，且我们的回调注册晚于插件，所以在这里设才压得住。
+    //
+    // 必须连派生变体一起加，不能只给 debug/profileable：
+    // 采 baseline profile 依赖设备上真实的对话与题库数据（见 BaselineProfileGenerator 注释），
+    // 派生变体若用独立包名就是一个空数据的新应用，profile 覆盖不到 Markdown 渲染热路径。
+    onVariants(selector().all()) { variant ->
+        if (localDevBuildTypes.contains(variant.buildType)) {
+            variant.applicationId.set(baseApplicationId + devAppIdSuffix)
+        }
+    }
 }
 
 // 使用 AGP 内置 Kotlin 的扩展配置 JVM 目标

@@ -7,6 +7,11 @@ plugins {
     alias(libs.plugins.androidx.baselineprofile)
 }
 
+// 与 :app 的本机组共用的 applicationId 后缀（单一真源在 gradle.properties）。
+// 宏基准运行在 :app 的 nonMinifiedRelease / benchmarkRelease 上，这两个变体属于本机组、
+// 带后缀，所以这里拼出的目标包名也必须带上，否则 UiAutomator 启动不了目标进程。
+def devAppIdSuffix = providers.gradleProperty('offermateDevAppIdSuffix').getOrElse('.dev')
+
 android {
     namespace 'com.jk.offermate.baselineprofile'
     compileSdk 35
@@ -16,6 +21,15 @@ android {
         minSdk 28
         targetSdk 35
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // 被测应用包名。base 部分与 :app 的 applicationId 保持一致（改那边记得改这里），
+        // 后缀部分从 gradle.properties 读，跟着本机组自动走。
+        buildConfigField "String", "TARGET_PACKAGE", "\"com.jk.offermate${devAppIdSuffix}\""
+    }
+
+    buildFeatures {
+        // AGP 8 默认关闭；TARGET_PACKAGE 要靠它传给测试代码
+        buildConfig true
     }
 
     compileOptions {

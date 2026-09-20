@@ -1,13 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup 规则（`android:fullBackupContent`，作用于 API 30 及以下）。
+  API 31+ 走 data_extraction_rules.xml —— 两套配置各自独立生效，改一份不够。
+
+  只写 exclude：Auto Backup 默认收全部，列出 exclude 即"除此之外都备份"。
+
+  为什么必须排除 offermate_secure_prefs.xml：
+  它是 EncryptedSharedPreferences 的密文文件，主密钥由 MasterKey 存在 Android Keystore，
+  按 app UID 归属，**不会**随备份走。把密文恢复到新设备/新安装上，得到的是一个
+  解不开的文件，首次读 Key 时 EncryptedSharedPreferences.create 会抛异常。
+  排除掉反而得到干净的"Key 为空"状态，用户重填一次即可。
+
+  新增任何 EncryptedSharedPreferences 存储时，记得在这里和 data_extraction_rules.xml 同步加一行。
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <exclude domain="sharedpref" path="offermate_secure_prefs.xml" />
 </full-backup-content>

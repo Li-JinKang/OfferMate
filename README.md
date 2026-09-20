@@ -172,6 +172,50 @@ cd OfferMate
 
 首次启动后，进入「设置」页面填入你自己的模型 API Key（详见下一节），即可开始使用。
 
+### 开发包与正式包并存（`.dev` 后缀）
+
+本机构建出来的包 applicationId 是 **`com.jk.offermate.dev`**，正式 release 才是 `com.jk.offermate`。
+两者在设备上是并存的两个应用。
+
+这么做是因为 debug 用 debug 签名、release 用正式签名，若共用同一个 applicationId，
+设备上装过一种再装另一种就会 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，只能卸载重装 ——
+而卸载会清掉题库、简历记忆和 API Key。加后缀之后这个冲突不再发生。
+
+属于「本机组」的四个构建类型共用这个后缀与 debug 签名，因此彼此可以自由覆盖安装、数据相通：
+
+| 构建类型 | 用途 |
+|---|---|
+| `debug` | 日常开发 |
+| `profileable` | 性能剖析（见下一节） |
+| `nonMinifiedRelease` / `benchmarkRelease` | baselineprofile 插件派生，采基线 profile / 跑宏基准 |
+
+后缀值定义在 `gradle.properties` 的 `offermateDevAppIdSuffix`（`:app` 与 `:baselineprofile` 共用一处定义）。
+
+### 开发期数据备份与 Key 回填
+
+万一还是需要卸载重装（或要换 applicationId），用这两个脚本带走本地数据：
+
+```bash
+tools/dev-backup.sh                  # 备份到 ~/.offermate/dev-backups/
+tools/dev-restore.sh                 # 恢复最新一份
+tools/dev-restore.sh -p com.jk.offermate.dev ~/om-old.tar   # 跨包名恢复（迁移用）
+```
+
+备份内容是 Room 库、四个 DataStore、简历记忆 Markdown 与简历原件。脚本依赖 `adb run-as`，
+只对 debuggable 包有效。
+
+**API Key 不在备份里**，而且救不回来：它由 `EncryptedSharedPreferences` 加密，主密钥在
+Android Keystore 里按 app UID 归属，随包卸载一起删除，拷密文文件回来也解不开。
+所以开发期改用配置回填 —— 在 `local.properties`（已 gitignore，不会入库）里写：
+
+```properties
+devApiKey=sk-your-key-here
+devApiProvider=deepseek    # 可选，缺省则填给当前启用的服务商
+```
+
+debug 包启动时若发现该服务商的 Key 为空，就自动写入，不会覆盖你在设置页手填的值。
+release 变体拿到的是空串，正式包不含任何 Key。
+
 ### 性能剖析构建（`profileable`）
 
 做帧率/卡顿分析时**不要用 debug 包**：`debuggable=true` 会关掉部分 ART 优化、改变 JIT 行为，

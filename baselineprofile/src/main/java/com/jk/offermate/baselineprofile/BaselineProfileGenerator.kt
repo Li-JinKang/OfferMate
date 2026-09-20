@@ -48,7 +48,11 @@ class BaselineProfileGenerator {
     }
 
     private companion object {
-        const val PACKAGE = "com.jk.offermate"
+        // 不能硬编码：:app 的本机组变体（含跑宏基准用的 nonMinifiedRelease / benchmarkRelease）
+        // 带 applicationIdSuffix，与正式 release 是设备上并存的两个应用。
+        // 值由 baselineprofile/build.gradle 的 buildConfigField 注入。
+        // 注意是 val 而非 const val —— 引用 Java 的 static final 字段不算 Kotlin 编译期常量。
+        val PACKAGE: String = BuildConfig.TARGET_PACKAGE
         const val TIMEOUT_MS = 5_000L
         const val SCROLL_ROUNDS = 3
     }
