@@ -3,8 +3,8 @@ trust: L1
 anchors:
   - app/src/main/java/com/jk/offermate/di/AppContainer.kt
   - app/src/main/java/com/jk/offermate/OfferMateApplication.kt
-verified_commit: 63c65fb
-verified_at: 2026-09-19
+verified_commit: 62062a5
+verified_at: 2026-09-20
 supersedes: null
 ---
 
